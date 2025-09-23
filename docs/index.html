@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Domain Status</title>
+  <title>Domain Prices</title>
   <style>
     :root {
       --bg: #fff;
@@ -101,6 +101,40 @@
       height: 18px
     }
 
+    /* Controls */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .controls .control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--ring);
+      background: #f8fafc;
+      box-shadow: var(--shadow);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .controls select,
+    .controls input[type="text"] {
+      border: 0;
+      background: transparent;
+      outline: none;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .controls input[type="text"] {
+      min-width: 180px;
+    }
+
     /* Results */
     .list {
       margin-top: 26px;
@@ -183,9 +217,9 @@
 <body>
   <div class="wrap">
     <h4>namewiz / domainprices</h4>
-    <h1>Find your domain</h1>
-    <p class="sub">Use this fast and unlimited status lookup app to find your next domain quicker. While only a few
-      popular extensions are displayed below, the library supports over 1,500 TLDs.</p>
+    <h1>Domain Prices</h1>
+    <p class="sub">Use this fast price lookup to compare domain registration costs across currencies with optional
+      discounts. While only a few popular extensions are displayed below, the library supports many more.</p>
     <p class="sub">Install & usage guide is on the <a href="https://www.npmjs.com/package/domainprices">npm page</a>.
     </p>
     <div class="search" role="search">
@@ -201,46 +235,59 @@
       </button>
     </div>
 
+    <div class="controls" aria-label="Pricing controls">
+      <div class="control">
+        <span>Currency</span>
+        <select id="currency" aria-label="Select currency"></select>
+      </div>
+      <div class="control" style="flex:1">
+        <span>Discounts</span>
+        <input id="discounts" type="text" placeholder="e.g. SAVE10, NEWUSER15" aria-label="Discount codes" />
+      </div>
+    </div>
+
     <div class="list" id="results" aria-live="polite"></div>
   </div>
 
   <template id="row">
     <div class="row">
       <div class="domain"></div>
-      <span class="chip unk">Checking…</span>
+      <span class="chip unk">Calculating…</span>
     </div>
   </template>
 
   <script type="module">
     // Try local build first; fallback to CDN when unavailable
     (async () => {
-      let check;
+      let getPrice, listSupportedCurrencies;
       try {
-        ({ check } = await import('../dist/index.js'));
+        ({ getPrice, listSupportedCurrencies } = await import('./domainprices.js'));
       } catch (err) {
         console.warn('Local domainprices not found, using CDN.', err);
-        ({ check } = await import('https://cdn.jsdelivr.net/npm/domainprices@latest/dist/index.js'));
+        ({ getPrice, listSupportedCurrencies } = await import('https://cdn.jsdelivr.net/npm/domainprices@latest/dist/index.js'));
       }
 
       // TLDs to generate from query (deduped)
       const TLDS = ["com", "org", "net", "ai", "info", "xyz", "site",];
 
-      // Async availability check — using domainprices bundle
-      async function isAvailable(domain) {
-        try {
-          const res = await check(domain, { burstMode: true });
-          // Map library status to UI states
-          if (res.availability === 'unregistered') return 'unregistered';
-          if (res.availability === 'registered') return 'registered';
-          return 'unknown';
-        } catch (e) {
-          return 'unknown';
-        }
-      }
-
+      // Elements
       const results = document.getElementById('results');
       const q = document.getElementById('q');
       const clear = document.getElementById('clear');
+      const currencySel = document.getElementById('currency');
+      const discountsInput = document.getElementById('discounts');
+
+      // Populate currency options
+      try {
+        const supported = (typeof listSupportedCurrencies === 'function') ? listSupportedCurrencies() : ['USD', 'GBP', 'EUR', 'NGN'];
+        supported.forEach(code => {
+          const opt = document.createElement('option');
+          opt.value = code;
+          opt.textContent = code;
+          currencySel.appendChild(opt);
+        });
+        currencySel.value = 'USD';
+      } catch { /* noop */ }
 
       // Prevent stale async updates when user keeps typing
       let renderToken = 0;
@@ -256,42 +303,56 @@
         return TLDS.map(tld => `${base}.${tld}`);
       }
 
+      function parseCodes(raw) {
+        return (raw || '')
+          .split(/[\s,]+/)
+          .map(s => s.trim())
+          .filter(Boolean);
+      }
+
+      function formatCurrency(currency, value) {
+        try {
+          return new Intl.NumberFormat('en', { style: 'currency', currency }).format(value);
+        } catch {
+          return `${currency} ${Number(value).toFixed(2)}`;
+        }
+      }
+
+      async function priceFor(domain, currency, codes) {
+        try {
+          const quote = await getPrice(domain, currency, { discountCodes: codes });
+          return formatCurrency(quote.currency, quote.totalPrice);
+        } catch (e) {
+          return 'N/A';
+        }
+      }
+
       function renderFromQuery(query) {
         const token = ++renderToken;
         const base = sanitize(query);
         const domains = buildDomains(base);
         results.innerHTML = '';
         const tpl = document.getElementById('row');
+        const currency = currencySel.value || 'USD';
+        const codes = parseCodes(discountsInput.value);
 
         domains.forEach(domain => {
           const row = tpl.content.firstElementChild.cloneNode(true);
           row.querySelector('.domain').textContent = domain;
           const chip = row.querySelector('.chip');
-          chip.textContent = 'Checking…';
+          chip.textContent = 'Calculating…';
           chip.className = 'chip unk';
-          row.className = 'row unk';
+          row.className = 'row';
 
-          // Query availability
-          isAvailable(domain).then(state => {
+          // Compute price
+          priceFor(domain, currency, codes).then(text => {
             if (token !== renderToken) return; // stale render, skip
-            if (state === 'unregistered') {
-              chip.textContent = 'Available';
-              chip.className = 'chip ok';
-              row.className = 'row ok';
-            } else if (state === 'registered') {
-              chip.textContent = 'Taken';
-              chip.className = 'chip bad';
-              row.className = 'row bad';
-            } else {
-              chip.textContent = 'Unknown';
-              chip.className = 'chip unk';
-              row.className = 'row unk';
-            }
+            chip.textContent = text;
+            chip.className = text === 'N/A' ? 'chip bad' : 'chip ok';
           }).catch(() => {
             if (token !== renderToken) return;
-            chip.textContent = 'Unknown';
-            chip.className = 'chip unk';
-            row.className = 'row unk';
+            chip.textContent = 'N/A';
+            chip.className = 'chip bad';
           });
 
           results.appendChild(row);
@@ -306,6 +367,8 @@
 
       q.addEventListener('input', onInput);
       clear.addEventListener('click', () => { q.value = ''; onInput(); q.focus(); });
+      currencySel.addEventListener('change', onInput);
+      discountsInput.addEventListener('input', onInput);
 
       // initial
       q.value = '';

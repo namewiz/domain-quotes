@@ -6,6 +6,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "npx -y esbuild src/index.ts --bundle --minify --format=esm --target=es2020 --outdir=dist/ --platform=neutral",
+    "postbuild": "cp dist/index.js docs/domainprices.js",
     "test": "npm run build && node --test",
     "start": "npm run build && cp dist/index.js demo/index.js && npx serve demo",
     "generate:op-prices": "node src/scripts/generate-openprovider-prices.js",
