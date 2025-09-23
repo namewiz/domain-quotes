@@ -2,18 +2,19 @@ import discountsJson from './data/discount.json' assert { type: 'json' };
 import exchangeRatesJson from './data/exchange-rates.json' assert { type: 'json' };
 import openProviderPricesJson from './data/openprovider-prices.json' assert { type: 'json' };
 import vatRatesJson from './data/vat-rates.json' assert { type: 'json' };
+// Removed tldts dependency; implement internal suffix resolution.
 
-interface PriceResult {
+export interface PriceQuote {
   extension: string;
   currency: string;
   basePrice: number;
-  tax: number;
   discount: number;
+  tax: number;
   totalPrice: number;
   symbol: string;
 }
 
-interface ExchangeRateData {
+export interface ExchangeRateData {
   countryCode: string;
   currencyName: string;
   currencySymbol: string;
@@ -24,14 +25,86 @@ interface ExchangeRateData {
 
 type VatRates = Record<string, number>;
 
-interface DiscountConfig {
+export interface DiscountConfig {
   rate: number;
   extensions: string[];
   startAt: string;
   endAt: string;
 }
 
-async function loadPrices(): Promise<Record<string, number>> {
+export type DiscountPolicy = 'stack' | 'max';
+
+export interface GetPriceOptions {
+  discountCodes?: string[];
+  now?: number | Date;
+  discountPolicy?: DiscountPolicy;
+}
+
+// Narrow, explicit support for VAT mapping by currency
+const currencyToCountry: Record<string, string> = {
+  USD: 'US',
+  GBP: 'GB',
+  EUR: 'DE',
+  NGN: 'NG',
+};
+
+export function listSupportedCurrencies(): string[] {
+  return Object.keys(currencyToCountry);
+}
+
+export function isSupportedCurrency(code: string): boolean {
+  return code != null && currencyToCountry.hasOwnProperty(code.toUpperCase());
+}
+
+export function listSupportedExtensions(): string[] {
+  const raw = openProviderPricesJson as Record<string, { productPrice?: number } | null | undefined>;
+  return Object.entries(raw)
+    .filter(([, info]) => info && typeof info.productPrice === 'number' && info.productPrice! > 0)
+    .map(([ext]) => ext)
+    .sort();
+}
+
+export function isSupportedExtension(extOrDomain: string): boolean {
+  const ext = normalizeExtensionOrDomain(extOrDomain);
+  const raw = openProviderPricesJson as Record<string, { productPrice?: number } | null | undefined>;
+  const info = raw[ext];
+  return Boolean(info && typeof info.productPrice === 'number' && info.productPrice! > 0);
+}
+
+function normalizeExtensionOrDomain(input: string): string {
+  if (!input) return input as string;
+  const lower = input.trim().toLowerCase();
+  const cleaned = lower.replace(/^\.+/, '');
+  if (!cleaned) return '';
+
+  // Use known supported extensions to resolve the best-match suffix
+  const prices = loadPrices();
+  if (prices.hasOwnProperty(cleaned)) {
+    // Exact extension provided (e.g. "com" or "com.ng")
+    return cleaned;
+  }
+
+  if (cleaned.includes('.')) {
+    const parts = cleaned.split('.');
+    // Find the longest matching suffix present in prices
+    for (let i = 0; i < parts.length; i++) {
+      const suffix = parts.slice(i).join('.');
+      if (prices.hasOwnProperty(suffix)) return suffix;
+    }
+    // Fallback to last label if nothing matches
+    return parts[parts.length - 1];
+  }
+
+  return cleaned;
+}
+
+function asNowValue(now?: number | Date): number {
+  if (now instanceof Date) return now.getTime();
+  if (typeof now === 'number') return now;
+  return Date.now();
+}
+
+function loadPrices(): Record<string, number> {
   const raw = openProviderPricesJson as Record<string, { productPrice?: number } | null | undefined>;
   const result: Record<string, number> = {};
   Object.entries(raw).forEach(([ext, info]) => {
@@ -43,106 +116,124 @@ async function loadPrices(): Promise<Record<string, number>> {
   return result;
 }
 
-async function loadExchangeRates(): Promise<ExchangeRateData[]> {
+function loadExchangeRates(): ExchangeRateData[] {
   return exchangeRatesJson as ExchangeRateData[];
 }
 
-async function loadVatRates(): Promise<VatRates> {
+function loadVatRates(): VatRates {
   return vatRatesJson as VatRates;
 }
 
-async function loadDiscounts(): Promise<Record<string, DiscountConfig>> {
+function loadDiscounts(): Record<string, DiscountConfig> {
   return discountsJson as Record<string, DiscountConfig>;
+}
+
+class DomainPricesError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'DomainPricesError';
+    this.code = code;
+  }
+}
+
+export class UnsupportedExtensionError extends DomainPricesError {
+  constructor(ext: string) {
+    super('ERR_UNSUPPORTED_EXTENSION', `Unsupported extension: ${ext}`);
+    this.name = 'UnsupportedExtensionError';
+  }
+}
+
+export class UnsupportedCurrencyError extends DomainPricesError {
+  constructor(currency: string) {
+    super('ERR_UNSUPPORTED_CURRENCY', `Unsupported currency: ${currency}`);
+    this.name = 'UnsupportedCurrencyError';
+  }
+}
+
+function findRateInfo(currency: string): ExchangeRateData {
+  if (currency === 'USD') {
+    return {
+      countryCode: 'US',
+      currencyName: 'United States Dollar',
+      currencySymbol: '$',
+      currencyCode: 'USD',
+      exchangeRate: 1,
+      inverseRate: 1,
+    };
+  }
+  const rates = loadExchangeRates();
+  const found = rates.find((r) => r.currencyCode === currency);
+  if (!found) throw new UnsupportedCurrencyError(currency);
+  return found;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 export async function getPrice(
   extension: string,
   currencyCode: string,
-  discountCodes: string[] = []
-): Promise<PriceResult> {
-  const prices = await loadPrices();
-  const exchangeRates = await loadExchangeRates();
-  const vatRates = await loadVatRates();
-  const discounts = await loadDiscounts();
+  options: GetPriceOptions = {}
+): Promise<PriceQuote> {
+  const prices = loadPrices();
+  const vatRates = loadVatRates();
+  const discounts = loadDiscounts();
 
-  const ext = extension.replace(/^\./, '').toLowerCase();
-  if (prices[ext] === undefined) {
-    throw new Error(400, `Unsupported extension: ${ext}. No price defined.`);
-  }
+  const ext = normalizeExtensionOrDomain(extension);
   const baseUsd = prices[ext];
-  if (baseUsd === 0) {
-    throw new Error(400, `Unsupported extension ${ext}. No USD price defined.`);
+  if (baseUsd === undefined || baseUsd === 0) {
+    throw new UnsupportedExtensionError(ext);
   }
 
-  const currency = currencyCode.toUpperCase();
-  const currencyToCountry: Record<string, string> = {
-    USD: 'US',
-    GBP: 'GB',
-    EUR: 'DE',
-    NGN: 'NG',
-  };
+  const currency = (currencyCode || '').toUpperCase();
   const iso = currencyToCountry[currency];
   if (!iso) {
-    throw new Error(400, `Unsupported currency ${currencyCode}`);
+    throw new UnsupportedCurrencyError(currencyCode);
   }
-
   const taxRate = vatRates[iso];
-  if (taxRate === undefined) {
-    throw new Error(400, `Unsupported currency ${currencyCode}`);
+  if (typeof taxRate !== 'number') {
+    throw new UnsupportedCurrencyError(currencyCode);
   }
 
-  let rateInfo = exchangeRates.find((r) => r.currencyCode === currency);
-  if (!rateInfo) {
-    if (currency === 'USD') {
-      rateInfo = {
-        countryCode: 'US',
-        currencyName: 'United States Dollar',
-        currencySymbol: '$',
-        currencyCode: 'USD',
-        exchangeRate: 1,
-        inverseRate: 1,
-      };
-    } else {
-      throw new Error(400, `Unsupported currency ${currencyCode}`);
-    }
-  }
-
+  const rateInfo = findRateInfo(currency);
   const symbol = rateInfo.currencySymbol;
+  const basePrice = round2(baseUsd * rateInfo.exchangeRate);
 
-  const basePrice = +(baseUsd * rateInfo.exchangeRate).toFixed(2);
+  const uniqueCodes = Array.from(new Set((options.discountCodes || []).map((c) => c.toUpperCase())));
+  const nowMs = asNowValue(options.now);
+  const applicable: number[] = [];
+  for (const code of uniqueCodes) {
+    const conf = discounts[code];
+    if (!conf) continue;
+    const start = Date.parse(conf.startAt);
+    const end = Date.parse(conf.endAt);
+    if (Number.isNaN(start) || Number.isNaN(end)) continue;
+    if (nowMs < start || nowMs > end) continue;
+    if (!conf.extensions.includes(ext)) continue;
+    applicable.push(round2(basePrice * conf.rate));
+  }
 
   let discount = 0;
-  if (discountCodes.length > 0) {
-    const uniqueCodes = Array.from(new Set(discountCodes.map((c) => c.toUpperCase())));
-    const now = Date.now();
-    uniqueCodes.forEach((code) => {
-      const conf = discounts[code];
-      if (!conf) return;
-      const start = Date.parse(conf.startAt);
-      const end = Date.parse(conf.endAt);
-      if (Number.isNaN(start) || Number.isNaN(end)) return;
-      if (now < start || now > end) return;
-      if (!conf.extensions.includes(ext)) return;
-      discount += basePrice * conf.rate;
-    });
-    discount = +discount.toFixed(2);
+  if (applicable.length > 0) {
+    if (options.discountPolicy === 'stack') {
+      discount = round2(applicable.reduce((a, b) => a + b, 0));
+    } else {
+      // default: apply only the highest discount
+      discount = Math.max(...applicable);
+    }
   }
-  // TODO: update policy to apply only one discount, the highest.
-  if (discount > basePrice) {
-    discount = basePrice;
-  }
+  if (discount > basePrice) discount = basePrice;
 
-  const subtotal = +(basePrice - discount).toFixed(2);
-  const tax = +(subtotal * taxRate).toFixed(2);
-  const totalPrice = +(subtotal + tax).toFixed(2);
+  const subtotal = round2(basePrice - discount);
+  const tax = round2(subtotal * taxRate);
+  const totalPrice = round2(subtotal + tax);
 
-  return {
-    extension: ext,
-    currency: currencyCode,
-    basePrice,
-    tax,
-    discount,
-    totalPrice,
-    symbol,
-  };
+  return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol };
 }
+
+export const __internal = {
+  normalizeExtensionOrDomain,
+  currencyToCountry,
+};
