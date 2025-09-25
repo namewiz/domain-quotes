@@ -14,6 +14,13 @@ export interface PriceQuote {
   symbol: string;
 }
 
+export type MarkupType = 'percentage' | 'fixedUsd';
+
+export interface PriceMarkup {
+  type: MarkupType;
+  value: number;
+}
+
 export interface ExchangeRateData {
   countryCode: string;
   currencyName: string;
@@ -45,6 +52,7 @@ export interface DomainPricesConfig {
   exchangeRates: ExchangeRateData[];
   vatRates: VatRates;
   discounts: Record<string, DiscountConfig>;
+  markup?: PriceMarkup;
 }
 
 // Narrow, explicit support for VAT mapping by currency
@@ -171,6 +179,20 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+function applyMarkup(baseUsd: number, markup?: PriceMarkup): number {
+  if (!markup) return baseUsd;
+  const value = typeof markup.value === 'number' ? markup.value : 0;
+  if (!Number.isFinite(value) || value <= 0) return baseUsd;
+  switch (markup.type) {
+    case 'percentage':
+      return baseUsd + (baseUsd * value);
+    case 'fixedUsd':
+      return baseUsd + value;
+    default:
+      return baseUsd;
+  }
+}
+
 export class DomainPrices {
   private readonly config: DomainPricesConfig;
 
@@ -212,7 +234,8 @@ export class DomainPrices {
 
     const rateInfo = this.findRateInfo(currency);
     const symbol = rateInfo.currencySymbol;
-    const basePrice = round2(baseUsd * rateInfo.exchangeRate);
+    const markedUsd = applyMarkup(baseUsd, this.config.markup);
+    const basePrice = round2(markedUsd * rateInfo.exchangeRate);
 
     const uniqueCodes = Array.from(new Set((options.discountCodes || []).map((c) => c.toUpperCase())));
     const nowMs = asNowValue(options.now);

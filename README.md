@@ -13,6 +13,7 @@ Includes:
 - Currency conversion via baked-in exchange rates
 - VAT calculation per currency (US, GB, DE, NG mapping)
 - Optional discount codes with max-or-stack policy
+- Configurable markup to increase base prices before taxes/discounts
 - Clean ESM API with TypeScript types
 
 Install
@@ -33,6 +34,13 @@ const quote = await getDefaultPrice('com', 'USD', { discountCodes: ['SAVE10'] })
 // Advanced: custom or explicit config via the class
 const dp = new DomainPrices(DEFAULTS_Sept2025); // or provide your own DomainPricesConfig
 const eur = await dp.getPrice('example.com', 'EUR', { discountPolicy: 'stack' });
+
+// Add a 15% markup before discounts/taxes
+const withMarkup = new DomainPrices({
+  ...DEFAULTS_Sept2025,
+  markup: { type: 'percentage', value: 0.15 },
+});
+const quoteWithMarkup = await withMarkup.getPrice('example.com', 'USD', { discountCodes: ['SAVE10'] });
 ```
 
 API
@@ -70,6 +78,13 @@ interface GetPriceOptions {
   discountPolicy?: DiscountPolicy;
 }
 
+type MarkupType = 'percentage' | 'fixed_usd';
+
+interface PriceMarkup {
+  type: MarkupType;            // percentage -> 0.2 === +20%, fixed_usd -> +$ value before conversion
+  value: number;
+}
+
 interface PriceQuote {
   extension: string;
   currency: string;
@@ -101,6 +116,7 @@ interface DomainPricesConfig {
   exchangeRates: ExchangeRateData[];           // currency conversion data
   vatRates: Record<string, number>;            // ISO country code → VAT rate
   discounts: Record<string, DiscountConfig>;   // discount code → config
+  markup?: PriceMarkup;                        // optional markup applied before conversion
 }
 ```
 

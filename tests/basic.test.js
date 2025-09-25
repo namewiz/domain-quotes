@@ -1,14 +1,16 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 
 import {
+  DEFAULTS_Sept2025,
+  DomainPrices,
   getDefaultPrice,
-  isSupportedExtension,
   isSupportedCurrency,
+  isSupportedExtension,
   listSupportedCurrencies,
   listSupportedExtensions,
-  UnsupportedExtensionError,
   UnsupportedCurrencyError,
+  UnsupportedExtensionError,
 } from '../dist/index.js';
 
 test('supported currency list contains core set', () => {
@@ -73,6 +75,49 @@ test('discount does not apply when extension not eligible', async () => {
   // SAVE10 is for com/net only
   const xyz = await getDefaultPrice('xyz', 'USD', { discountCodes: ['SAVE10'] });
   assert.equal(xyz.discount, 0);
+});
+
+test('percentage markup increases base price before discounting', async () => {
+  const baseline = await getDefaultPrice('com', 'USD', { discountCodes: ['SAVE10'] });
+  const dp = new DomainPrices({
+    ...DEFAULTS_Sept2025,
+    markup: { type: 'percentage', value: 0.25 },
+  });
+  const quote = await dp.getPrice('com', 'USD', { discountCodes: ['SAVE10'] });
+  const expected = Number((baseline.basePrice * 1.25).toFixed(2));
+  assert.equal(quote.basePrice, expected);
+  assert.equal(quote.discount, Number((expected * 0.1).toFixed(2))); // SAVE10 applies
+});
+
+test('fixed USD markup adjusts prices before currency conversion', async () => {
+  const ext = 'com';
+  const markupUsd = 5;
+
+  // Baseline without markup
+  const baselineUsd = await getDefaultPrice(ext, 'USD');
+  const baselineEur = await getDefaultPrice(ext, 'EUR');
+
+  // With fixed USD markup (added before conversion)
+  const dp = new DomainPrices({
+    ...DEFAULTS_Sept2025,
+    markup: { type: 'fixedUsd', value: markupUsd },
+  });
+  const quotedUsd = await dp.getPrice(ext, 'USD');
+  const quotedEur = await dp.getPrice(ext, 'EUR');
+
+  // USD base increases exactly by the USD markup value
+  assert.equal(
+    quotedUsd.basePrice,
+    Number((baselineUsd.basePrice + markupUsd).toFixed(2))
+  );
+
+  // EUR base increase ~= USD markup scaled by EUR rate (rounding tolerance)
+  const eurRate = DEFAULTS_Sept2025.exchangeRates.find((r) => r.currencyCode === 'EUR')?.exchangeRate;
+  assert.ok(typeof eurRate === 'number');
+  const expectedEurIncrease = Number((markupUsd * eurRate).toFixed(2));
+  const actualEurIncrease = Number((quotedEur.basePrice - baselineEur.basePrice).toFixed(2));
+  // Allow ±0.01 because each base is rounded separately
+  assert.ok(Math.abs(actualEurIncrease - expectedEurIncrease) <= 0.01);
 });
 
 // priceForDomain API removed; getDefaultPrice accepts an extension.

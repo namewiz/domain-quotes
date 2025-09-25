@@ -123,7 +123,8 @@
     }
 
     .controls select,
-    .controls input[type="text"] {
+    .controls input[type="text"],
+    .controls input[type="number"] {
       border: 0;
       background: transparent;
       outline: none;
@@ -131,7 +132,8 @@
       color: var(--text);
     }
 
-    .controls input[type="text"] {
+    .controls input[type="text"],
+    .controls input[type="number"] {
       min-width: 180px;
     }
 
@@ -220,6 +222,8 @@
     <h1>Domain Prices</h1>
     <p class="sub">Use this fast price lookup to compare domain registration costs across currencies with optional
       discounts. While only a few popular extensions are displayed below, the library supports many more.</p>
+    <p class="sub">Need to adjust pricing globally? Provide a markup in your config (percentage or fixed USD) and
+      the library will increase the base before discounts and VAT.</p>
     <p class="sub">Install & usage guide is on the <a href="https://www.npmjs.com/package/domainprices">npm page</a>.
     </p>
     <div class="search" role="search">
@@ -245,6 +249,19 @@
         <input id="discounts" type="text" placeholder="e.g. SAVE10, NEWUSER15" aria-label="Discount codes" />
       </div>
     </div>
+    <div class="controls" aria-label="Markup controls">
+      <div class="control" style="min-width:260px;">
+        <span>Markup</span>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="markupType" aria-label="Markup type" style="min-width:120px;">
+            <option value="none">None</option>
+            <option value="percentage">Percent</option>
+            <option value="fixedUsd">USD</option>
+          </select>
+          <input id="markupValue" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 10 for 10%" aria-label="Markup value" />
+        </div>
+      </div>
+    </div>
 
     <div class="list" id="results" aria-live="polite"></div>
   </div>
@@ -259,13 +276,18 @@
   <script type="module">
     // Try local build first; fallback to CDN when unavailable
     (async () => {
-      let getPrice, listSupportedCurrencies;
+      // Load library (local build first; fallback to CDN)
+      let mod;
       try {
-        ({ getPrice, listSupportedCurrencies } = await import('./domainprices.js'));
+        mod = await import('./domainprices.js');
       } catch (err) {
         console.warn('Local domainprices not found, using CDN.', err);
-        ({ getPrice, listSupportedCurrencies } = await import('https://cdn.jsdelivr.net/npm/domainprices@latest/dist/index.js'));
+        mod = await import('https://cdn.jsdelivr.net/npm/domainprices@latest/dist/index.js');
       }
+      const listSupportedCurrencies = (typeof mod.listSupportedCurrencies === 'function') ? mod.listSupportedCurrencies : (() => ['USD', 'GBP', 'EUR', 'NGN']);
+      const getDefaultPrice = mod.getDefaultPrice || mod.getPrice; // compat with older builds
+      const DomainPrices = mod.DomainPrices;
+      const DEFAULTS_Sept2025 = mod.DEFAULTS_Sept2025;
 
       // TLDs to generate from query (deduped)
       const TLDS = ["com", "org", "net", "ai", "info", "xyz", "site",];
@@ -276,6 +298,8 @@
       const clear = document.getElementById('clear');
       const currencySel = document.getElementById('currency');
       const discountsInput = document.getElementById('discounts');
+      const markupTypeSel = document.getElementById('markupType');
+      const markupValueInput = document.getElementById('markupValue');
 
       // Populate currency options
       try {
@@ -318,9 +342,25 @@
         }
       }
 
-      async function priceFor(domain, currency, codes) {
+      function getMarkupConfig() {
+        const type = markupTypeSel && markupTypeSel.value;
+        const raw = markupValueInput ? parseFloat(markupValueInput.value) : NaN;
+        if (!type || type === 'none') return null;
+        if (!Number.isFinite(raw) || raw <= 0) return null;
+        let value = raw;
+        // Convert percent input like "10" to 0.10 for library consumption
+        if (type === 'percentage') value = raw / 100;
+        return { type, value };
+      }
+
+      async function priceFor(domain, currency, codes, dp) {
         try {
-          const quote = await getPrice(domain, currency, { discountCodes: codes });
+          if (dp && typeof dp.getPrice === 'function') {
+            const quote = await dp.getPrice(domain, currency, { discountCodes: codes });
+            return formatCurrency(quote.currency, quote.totalPrice);
+          }
+          const fn = getDefaultPrice;
+          const quote = await fn(domain, currency, { discountCodes: codes });
           return formatCurrency(quote.currency, quote.totalPrice);
         } catch (e) {
           return 'N/A';
@@ -335,6 +375,15 @@
         const tpl = document.getElementById('row');
         const currency = currencySel.value || 'USD';
         const codes = parseCodes(discountsInput.value);
+        // Build pricing provider (with markup when selected). Falls back to default function when unavailable.
+        let dp = null;
+        try {
+          if (DomainPrices && DEFAULTS_Sept2025) {
+            const markup = getMarkupConfig();
+            const cfg = markup ? { ...DEFAULTS_Sept2025, markup } : DEFAULTS_Sept2025;
+            dp = new DomainPrices(cfg);
+          }
+        } catch { /* noop */ }
 
         domains.forEach(domain => {
           const row = tpl.content.firstElementChild.cloneNode(true);
@@ -345,7 +394,7 @@
           row.className = 'row';
 
           // Compute price
-          priceFor(domain, currency, codes).then(text => {
+          priceFor(domain, currency, codes, dp).then(text => {
             if (token !== renderToken) return; // stale render, skip
             chip.textContent = text;
             chip.className = text === 'N/A' ? 'chip bad' : 'chip ok';
@@ -369,6 +418,8 @@
       clear.addEventListener('click', () => { q.value = ''; onInput(); q.focus(); });
       currencySel.addEventListener('change', onInput);
       discountsInput.addEventListener('input', onInput);
+      markupTypeSel.addEventListener('change', onInput);
+      markupValueInput.addEventListener('input', onInput);
 
       // initial
       q.value = '';
