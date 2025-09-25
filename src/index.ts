@@ -40,6 +40,13 @@ export interface GetPriceOptions {
   discountPolicy?: DiscountPolicy;
 }
 
+export interface DomainPricesConfig {
+  prices: Record<string, number>;
+  exchangeRates: ExchangeRateData[];
+  vatRates: VatRates;
+  discounts: Record<string, DiscountConfig>;
+}
+
 // Narrow, explicit support for VAT mapping by currency
 const currencyToCountry: Record<string, string> = {
   USD: 'US',
@@ -65,20 +72,18 @@ export function listSupportedExtensions(): string[] {
 }
 
 export function isSupportedExtension(extOrDomain: string): boolean {
-  const ext = normalizeExtensionOrDomain(extOrDomain);
+  const ext = normalizeExtensionOrDomainUsing(loadPrices(), extOrDomain);
   const raw = openProviderPricesJson as Record<string, { productPrice?: number } | null | undefined>;
   const info = raw[ext];
   return Boolean(info && typeof info.productPrice === 'number' && info.productPrice! > 0);
 }
 
-function normalizeExtensionOrDomain(input: string): string {
+function normalizeExtensionOrDomainUsing(prices: Record<string, number>, input: string): string {
   if (!input) return input as string;
   const lower = input.trim().toLowerCase();
   const cleaned = lower.replace(/^\.+/, '');
   if (!cleaned) return '';
 
-  // Use known supported extensions to resolve the best-match suffix
-  const prices = loadPrices();
   if (prices.hasOwnProperty(cleaned)) {
     // Exact extension provided (e.g. "com" or "com.ng")
     return cleaned;
@@ -130,7 +135,7 @@ function loadDiscounts(): Record<string, DiscountConfig> {
 
 class DomainPricesError extends Error {
   code: string;
-  constructor(code: string, message: string) {
+  constructor (code: string, message: string) {
     super(message);
     this.name = 'DomainPricesError';
     this.code = code;
@@ -138,102 +143,124 @@ class DomainPricesError extends Error {
 }
 
 export class UnsupportedExtensionError extends DomainPricesError {
-  constructor(ext: string) {
+  constructor (ext: string) {
     super('ERR_UNSUPPORTED_EXTENSION', `Unsupported extension: ${ext}`);
     this.name = 'UnsupportedExtensionError';
   }
 }
 
 export class UnsupportedCurrencyError extends DomainPricesError {
-  constructor(currency: string) {
+  constructor (currency: string) {
     super('ERR_UNSUPPORTED_CURRENCY', `Unsupported currency: ${currency}`);
     this.name = 'UnsupportedCurrencyError';
   }
 }
 
-function findRateInfo(currency: string): ExchangeRateData {
-  if (currency === 'USD') {
-    return {
-      countryCode: 'US',
-      currencyName: 'United States Dollar',
-      currencySymbol: '$',
-      currencyCode: 'USD',
-      exchangeRate: 1,
-      inverseRate: 1,
-    };
-  }
-  const rates = loadExchangeRates();
-  const found = rates.find((r) => r.currencyCode === currency);
-  if (!found) throw new UnsupportedCurrencyError(currency);
-  return found;
+function findUsdRateInfo(): ExchangeRateData {
+  return {
+    countryCode: 'US',
+    currencyName: 'United States Dollar',
+    currencySymbol: '$',
+    currencyCode: 'USD',
+    exchangeRate: 1,
+    inverseRate: 1,
+  };
 }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export async function getPrice(
+export class DomainPrices {
+  private readonly config: DomainPricesConfig;
+
+  constructor (config: DomainPricesConfig) {
+    this.config = config;
+  }
+
+  private findRateInfo(currency: string): ExchangeRateData {
+    if (currency === 'USD') return findUsdRateInfo();
+    const found = this.config.exchangeRates.find((r) => r.currencyCode === currency);
+    if (!found) throw new UnsupportedCurrencyError(currency);
+    return found;
+  }
+
+  async getPrice(
+    extension: string,
+    currencyCode: string,
+    options: GetPriceOptions = {}
+  ): Promise<PriceQuote> {
+    const prices = this.config.prices;
+    const vatRates = this.config.vatRates;
+    const discounts = this.config.discounts;
+
+    const ext = normalizeExtensionOrDomainUsing(prices, extension);
+    const baseUsd = prices[ext];
+    if (baseUsd === undefined || baseUsd === 0) {
+      throw new UnsupportedExtensionError(ext);
+    }
+
+    const currency = (currencyCode || '').toUpperCase();
+    const iso = currencyToCountry[currency];
+    if (!iso) {
+      throw new UnsupportedCurrencyError(currencyCode);
+    }
+    const taxRate = vatRates[iso];
+    if (typeof taxRate !== 'number') {
+      throw new UnsupportedCurrencyError(currencyCode);
+    }
+
+    const rateInfo = this.findRateInfo(currency);
+    const symbol = rateInfo.currencySymbol;
+    const basePrice = round2(baseUsd * rateInfo.exchangeRate);
+
+    const uniqueCodes = Array.from(new Set((options.discountCodes || []).map((c) => c.toUpperCase())));
+    const nowMs = asNowValue(options.now);
+    const applicable: number[] = [];
+    for (const code of uniqueCodes) {
+      const conf = discounts[code];
+      if (!conf) continue;
+      const start = Date.parse(conf.startAt);
+      const end = Date.parse(conf.endAt);
+      if (Number.isNaN(start) || Number.isNaN(end)) continue;
+      if (nowMs < start || nowMs > end) continue;
+      if (!conf.extensions.includes(ext)) continue;
+      applicable.push(round2(basePrice * conf.rate));
+    }
+
+    let discount = 0;
+    if (applicable.length > 0) {
+      if (options.discountPolicy === 'stack') {
+        discount = round2(applicable.reduce((a, b) => a + b, 0));
+      } else {
+        // default: apply only the highest discount
+        discount = Math.max(...applicable);
+      }
+    }
+    if (discount > basePrice) discount = basePrice;
+
+    const subtotal = round2(basePrice - discount);
+    const tax = round2(subtotal * taxRate);
+    const totalPrice = round2(subtotal + tax);
+
+    return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol };
+  }
+}
+
+// Build default config snapshot from the bundled JSON data.
+export const DEFAULTS_Sept2025: DomainPricesConfig = {
+  prices: loadPrices(),
+  exchangeRates: loadExchangeRates(),
+  vatRates: loadVatRates(),
+  discounts: loadDiscounts(),
+};
+
+// Back-compat wrapper that uses the default config
+export async function getDefaultPrice(
   extension: string,
   currencyCode: string,
   options: GetPriceOptions = {}
 ): Promise<PriceQuote> {
-  const prices = loadPrices();
-  const vatRates = loadVatRates();
-  const discounts = loadDiscounts();
-
-  const ext = normalizeExtensionOrDomain(extension);
-  const baseUsd = prices[ext];
-  if (baseUsd === undefined || baseUsd === 0) {
-    throw new UnsupportedExtensionError(ext);
-  }
-
-  const currency = (currencyCode || '').toUpperCase();
-  const iso = currencyToCountry[currency];
-  if (!iso) {
-    throw new UnsupportedCurrencyError(currencyCode);
-  }
-  const taxRate = vatRates[iso];
-  if (typeof taxRate !== 'number') {
-    throw new UnsupportedCurrencyError(currencyCode);
-  }
-
-  const rateInfo = findRateInfo(currency);
-  const symbol = rateInfo.currencySymbol;
-  const basePrice = round2(baseUsd * rateInfo.exchangeRate);
-
-  const uniqueCodes = Array.from(new Set((options.discountCodes || []).map((c) => c.toUpperCase())));
-  const nowMs = asNowValue(options.now);
-  const applicable: number[] = [];
-  for (const code of uniqueCodes) {
-    const conf = discounts[code];
-    if (!conf) continue;
-    const start = Date.parse(conf.startAt);
-    const end = Date.parse(conf.endAt);
-    if (Number.isNaN(start) || Number.isNaN(end)) continue;
-    if (nowMs < start || nowMs > end) continue;
-    if (!conf.extensions.includes(ext)) continue;
-    applicable.push(round2(basePrice * conf.rate));
-  }
-
-  let discount = 0;
-  if (applicable.length > 0) {
-    if (options.discountPolicy === 'stack') {
-      discount = round2(applicable.reduce((a, b) => a + b, 0));
-    } else {
-      // default: apply only the highest discount
-      discount = Math.max(...applicable);
-    }
-  }
-  if (discount > basePrice) discount = basePrice;
-
-  const subtotal = round2(basePrice - discount);
-  const tax = round2(subtotal * taxRate);
-  const totalPrice = round2(subtotal + tax);
-
-  return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol };
+  const dp = new DomainPrices(DEFAULTS_Sept2025);
+  return dp.getPrice(extension, currencyCode, options);
 }
-
-export const __internal = {
-  normalizeExtensionOrDomain,
-  currencyToCountry,
-};

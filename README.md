@@ -24,21 +24,29 @@ npm i domainprices
 Usage
 
 ```ts
-import { getPrice } from 'domainprices';
+import { getDefaultPrice, DomainPrices, DEFAULTS_Sept2025 } from 'domainprices';
 
-// Extension-based
-const quote = await getPrice('com', 'USD');
-// { extension: 'com', currency: 'USD', basePrice, discount, tax, totalPrice, symbol }
+// Quick price (uses bundled defaults)
+const quote = await getDefaultPrice('com', 'USD', { discountCodes: ['SAVE10'] });
+// → { extension, currency, basePrice, discount, tax, totalPrice, symbol }
+
+// Advanced: custom or explicit config via the class
+const dp = new DomainPrices(DEFAULTS_Sept2025); // or provide your own DomainPricesConfig
+const eur = await dp.getPrice('example.com', 'EUR', { discountPolicy: 'stack' });
 ```
 
 API
 
-- `getPrice(extension: string, currency: string, options?: GetPriceOptions): Promise<PriceQuote>`
-  - Computes price for a TLD/SLD extension (e.g. `com`, `com.ng`, `.org`).
+- `getDefaultPrice(extension: string, currency: string, options?: GetPriceOptions): Promise<PriceQuote>`
+  - Computes price for a TLD/SLD extension (e.g. `com`, `com.ng`, `.org`) using the bundled defaults.
   - `options`
     - `discountCodes?: string[]` – one or more codes; case-insensitive.
     - `now?: number | Date` – inject time for deterministic tests.
     - `discountPolicy?: 'stack' | 'max'` – default `'max'` (highest single discount only).
+
+- `class DomainPrices(config: DomainPricesConfig)`
+  - `getPrice(extension: string, currency: string, options?: GetPriceOptions): Promise<PriceQuote>` – same behavior as above, but uses the provided config.
+  - `DEFAULTS_Sept2025: DomainPricesConfig` – exported snapshot config used by `getDefaultPrice`.
 
 - `listSupportedExtensions(): string[]`
   - All extensions with a non-zero price in the dataset.
@@ -70,6 +78,29 @@ interface PriceQuote {
   tax: number;
   totalPrice: number;
   symbol: string;
+}
+
+interface ExchangeRateData {
+  countryCode: string;
+  currencyName: string;
+  currencySymbol: string;
+  currencyCode: string;
+  exchangeRate: number;
+  inverseRate: number;
+}
+
+interface DiscountConfig {
+  rate: number; // e.g. 0.1 for 10%
+  extensions: string[]; // eligible extensions
+  startAt: string; // ISO timestamp
+  endAt: string;   // ISO timestamp
+}
+
+interface DomainPricesConfig {
+  prices: Record<string, number>;              // base USD prices keyed by extension
+  exchangeRates: ExchangeRateData[];           // currency conversion data
+  vatRates: Record<string, number>;            // ISO country code → VAT rate
+  discounts: Record<string, DiscountConfig>;   // discount code → config
 }
 ```
 
