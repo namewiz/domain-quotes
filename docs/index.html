@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Domain Prices</title>
+  <title>Domain Quote</title>
   <style>
     :root {
       --bg: #fff;
@@ -218,13 +218,13 @@
 
 <body>
   <div class="wrap">
-    <h4>namewiz / domainprices</h4>
-    <h1>Domain Prices</h1>
-    <p class="sub">Use this fast price lookup to compare domain registration costs across currencies with optional
+    <h4>namewiz / domain-quotes</h4>
+    <h1>Domain Quote</h1>
+    <p class="sub">Use this fast quote lookup to compare domain registration costs across currencies with optional
       discounts. While only a few popular extensions are displayed below, the library supports many more.</p>
-    <p class="sub">Need to adjust pricing globally? Provide a markup in your config (percentage or fixed USD) and
+    <p class="sub">Need to adjust quoting globally? Provide a markup in your config (percentage or fixed USD) and
       the library will increase the base before discounts and VAT.</p>
-    <p class="sub">Install & usage guide is on the <a href="https://www.npmjs.com/package/domainprices">npm page</a>.
+    <p class="sub">Install & usage guide is on the <a href="https://www.npmjs.com/package/domain-quotes">npm page</a>.
     </p>
     <div class="search" role="search">
       <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -258,7 +258,8 @@
             <option value="percentage">Percent</option>
             <option value="fixedUsd">USD</option>
           </select>
-          <input id="markupValue" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 10 for 10%" aria-label="Markup value" />
+          <input id="markupValue" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 10 for 10%"
+            aria-label="Markup value" />
         </div>
       </div>
     </div>
@@ -279,13 +280,13 @@
       // Load library (local build first; fallback to CDN)
       let mod;
       try {
-        mod = await import('./domainprices.js');
+        mod = await import('./domain-quotes.js');
       } catch (err) {
-        console.warn('Local domainprices not found, using CDN.', err);
-        mod = await import('https://cdn.jsdelivr.net/npm/domainprices@latest/dist/index.js');
+        console.warn('Local domain-quotes not found, using CDN.', err);
+        mod = await import('https://cdn.jsdelivr.net/npm/domain-quotes@latest/dist/index.js');
       }
       const listSupportedCurrencies = (typeof mod.listSupportedCurrencies === 'function') ? mod.listSupportedCurrencies : (() => ['USD', 'GBP', 'EUR', 'NGN']);
-      const getDefaultPrice = mod.getDefaultPrice || mod.getPrice; // compat with older builds
+      const getDefaultQuote = mod.getDefaultQuote || mod.getDefaultPrice || mod.getPrice; // compat
       const DomainPrices = mod.DomainPrices;
       const DEFAULT_RATES = mod.DEFAULT_RATES;
 
@@ -359,7 +360,7 @@
             const quote = await dp.getPrice(domain, currency, { discountCodes: codes });
             return formatCurrency(quote.currency, quote.totalPrice);
           }
-          const fn = getDefaultPrice;
+          const fn = getDefaultQuote;
           const quote = await fn(domain, currency, { discountCodes: codes });
           return formatCurrency(quote.currency, quote.totalPrice);
         } catch (e) {
@@ -393,7 +394,7 @@
           chip.className = 'chip unk';
           row.className = 'row';
 
-          // Compute price
+          // Compute quote
           priceFor(domain, currency, codes, dp).then(text => {
             if (token !== renderToken) return; // stale render, skip
             chip.textContent = text;
@@ -427,7 +428,7 @@
     })();
   </script>
   <footer style="margin:48px auto 0px; padding-bottom: 40px; text-align:center;color:#6b7280;font-size:14px;">
-    Made with ❤️ by Justice &amp; AI. <a href="https://github.com/namewiz/domainprices" target="_blank"
+    Made with ❤️ by Justice &amp; AI. <a href="https://github.com/namewiz/domain-quotes" target="_blank"
       style="color:#2563eb;text-decoration:none;">Source code</a>
   </footer>
 </body>

@@ -1,29 +1,32 @@
 {
   "name": "domain-quotes",
   "version": "0.0.11",
-  "description": "Fast multi-currency domain price checker library across registrars.",
+  "description": "Fast multi-currency domain quote checker library across registrars.",
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {
     "build": "npx -y esbuild src/index.ts --bundle --minify --format=esm --target=esnext --outdir=dist/ --platform=neutral",
-    "postbuild": "cp dist/index.js docs/domainprices.js",
+    "postbuild": "cp dist/index.js docs/domain-quotes.js",
     "test": "npm run build && node --test",
-    "start": "npm run build && cp dist/index.js docs/domainprices.js && npx serve docs"
+    "start": "npm run build && cp dist/index.js docs/domain-quotes.js && npx serve docs"
   },
-  "homepage": "https://namewiz.github.io/domainprices",
+  "homepage": "https://namewiz.github.io/domain-quotes",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/namewiz/domainprices.git"
+    "url": "git+https://github.com/namewiz/domain-quotes.git"
   },
   "bugs": {
-    "url": "https://github.com/namewiz/domainprices/issues"
+    "url": "https://github.com/namewiz/domain-quotes/issues"
   },
   "author": "Justice Ogbonna <dev@justiceo.com>",
   "keywords": [
     "domain-name",
+    "domain-quotes",
     "domain-price",
     "domain-availability",
-    "price-check"
+    "price-check",
+    "quote",
+    "quote-check"
   ],
   "exports": {
     ".": "./dist/index.js"

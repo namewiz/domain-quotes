@@ -325,6 +325,15 @@ export class DomainPrices {
 
     return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol, transaction: tx };
   }
+
+  // Alias for readability when thinking in terms of quotes
+  async getQuote(
+    extension: string,
+    currencyCode: string,
+    options: GetPriceOptions = {}
+  ): Promise<PriceQuote> {
+    return this.getPrice(extension, currencyCode, options);
+  }
 }
 
 // Build default config snapshot from the bundled JSON data.
@@ -344,3 +353,18 @@ export async function getDefaultPrice(
   const dp = new DomainPrices(DEFAULT_RATES);
   return dp.getPrice(extension, currencyCode, options);
 }
+
+// Back-compat friendly alias aligned with project name
+export async function getDefaultQuote(
+  extension: string,
+  currencyCode: string,
+  options: GetPriceOptions = {}
+): Promise<PriceQuote> {
+  return getDefaultPrice(extension, currencyCode, options);
+}
+
+// Named export alias for the class to reflect new branding
+export { DomainPrices as DomainQuote };
+
+// Type alias for convenience when referring to a quote
+export type Quote = PriceQuote;

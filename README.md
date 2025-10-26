@@ -1,12 +1,12 @@
-# DomainPrices
+# Domain Quotes
 
-[![Build](https://github.com/namewiz/domainprices/actions/workflows/build.yml/badge.svg)](https://github.com/namewiz/domainprices/actions/workflows/build.yml)
-[![Test](https://github.com/namewiz/domainprices/actions/workflows/test.yml/badge.svg)](https://github.com/namewiz/domainprices/actions/workflows/test.yml)
-[![NPM](http://img.shields.io/npm/v/domainprices.svg)](https://www.npmjs.com/package/domainprices)
-[![License](https://img.shields.io/npm/l/domainprices.svg)](https://github.com/namewiz/domainprices/blob/main/LICENSE)
+[![Build](https://github.com/namewiz/domain-quotes/actions/workflows/build.yml/badge.svg)](https://github.com/namewiz/domain-quotes/actions/workflows/build.yml)
+[![Test](https://github.com/namewiz/domain-quotes/actions/workflows/test.yml/badge.svg)](https://github.com/namewiz/domain-quotes/actions/workflows/test.yml)
+[![NPM](http://img.shields.io/npm/v/domain-quotes.svg)](https://www.npmjs.com/package/domain-quotes)
+[![License](https://img.shields.io/npm/l/domain-quotes.svg)](https://github.com/namewiz/domain-quotes/blob/main/LICENSE)
 
 
-DomainPrices is a lightweight TypeScript/JavaScript library to compute domain registration prices across currencies with discounts and VAT, using curated datasets.
+Domain Quote is a lightweight TypeScript/JavaScript library to compute domain registration quotes across currencies with discounts and VAT, using curated datasets.
 
 Includes:
 - Extension support based on unified registrar price list (OpenProvider/NIRA)
@@ -19,16 +19,16 @@ Includes:
 Install
 
 ```bash
-npm i domainprices
+npm i domain-quotes
 ```
 
 Usage
 
 ```ts
-import { getDefaultPrice, DomainPrices, DEFAULT_RATES } from 'domainprices';
+import { getDefaultQuote, DomainPrices, DEFAULT_RATES } from 'domain-quotes';
 
-// Quick price (uses bundled defaults)
-const quote = await getDefaultPrice('com', 'USD', { discountCodes: ['SAVE10'] });
+// Quick quote (uses bundled defaults)
+const quote = await getDefaultQuote('com', 'USD', { discountCodes: ['SAVE10'] });
 // → { extension, currency, basePrice, discount, tax, totalPrice, symbol }
 
 // Advanced: custom or explicit config via the class
@@ -45,16 +45,17 @@ const quoteWithMarkup = await withMarkup.getPrice('example.com', 'USD', { discou
 
 API
 
-- `getDefaultPrice(extension: string, currency: string, options?: GetPriceOptions): Promise<PriceQuote>`
-  - Computes price for a TLD/SLD extension (e.g. `com`, `com.ng`, `.org`) using the bundled defaults.
+- `getDefaultQuote(extension: string, currency: string, options?: GetPriceOptions): Promise<PriceQuote>`
+  - Computes a quote for a TLD/SLD extension (e.g. `com`, `com.ng`, `.org`) using the bundled defaults.
+  - Alias: `getDefaultPrice(...)` for backward-compatibility.
   - `options`
     - `discountCodes?: string[]` – one or more codes; case-insensitive.
     - `now?: number | Date` – inject time for deterministic tests.
     - `discountPolicy?: 'stack' | 'max'` – default `'max'` (highest single discount only).
 
 - `class DomainPrices(config: DomainPricesConfig)`
-  - `getPrice(extension: string, currency: string, options?: GetPriceOptions): Promise<PriceQuote>` – same behavior as above, but uses the provided config.
-  - `DEFAULT_RATES: DomainPricesConfig` – exported snapshot config used by `getDefaultPrice`.
+  - `getPrice(extension: string, currency: string, options?: GetPriceOptions): Promise<PriceQuote>` – same behavior as above, but uses the provided config. Alias: `getQuote(...)`.
+  - `DEFAULT_RATES: DomainPricesConfig` – exported snapshot config used by `getDefaultQuote`.
 
 - `listSupportedExtensions(): string[]`
   - All extensions with a non-zero price in the dataset.

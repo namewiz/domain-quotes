@@ -1,5 +1,5 @@
 node_modules/*
 dist/*
 demo/index.js
-docs/domainprices.js
+docs/domain-quotes.js
 TODO.*
