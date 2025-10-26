@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  DEFAULTS_Sept2025,
+  DEFAULT_RATES,
   DomainPrices,
   getDefaultPrice,
   isSupportedCurrency,
@@ -78,7 +78,7 @@ test('discount does not apply when extension not eligible', async () => {
 test('percentage markup increases base price before discounting', async () => {
   const baseline = await getDefaultPrice('com', 'USD', { discountCodes: ['SAVE1'] });
   const dp = new DomainPrices({
-    ...DEFAULTS_Sept2025,
+    ...DEFAULT_RATES,
     markup: { type: 'percentage', value: 0.25 },
   });
   const quote = await dp.getPrice('com', 'USD', { discountCodes: ['SAVE1'] });
@@ -97,7 +97,7 @@ test('fixed USD markup adjusts prices before currency conversion', async () => {
 
   // With fixed USD markup (added before conversion)
   const dp = new DomainPrices({
-    ...DEFAULTS_Sept2025,
+    ...DEFAULT_RATES,
     markup: { type: 'fixedUsd', value: markupUsd },
   });
   const quotedUsd = await dp.getPrice(ext, 'USD');
@@ -110,7 +110,7 @@ test('fixed USD markup adjusts prices before currency conversion', async () => {
   );
 
   // EUR base increase ~= USD markup scaled by EUR rate (rounding tolerance)
-  const eurRate = DEFAULTS_Sept2025.exchangeRates.find((r) => r.currencyCode === 'EUR')?.exchangeRate;
+  const eurRate = DEFAULT_RATES.exchangeRates.find((r) => r.currencyCode === 'EUR')?.exchangeRate;
   assert.ok(typeof eurRate === 'number');
   const expectedEurIncrease = Number((markupUsd * eurRate).toFixed(2));
   const actualEurIncrease = Number((quotedEur.basePrice - baselineEur.basePrice).toFixed(2));
@@ -154,7 +154,7 @@ test('renewPrices override is used when provided in config', async () => {
   const baseline = await getDefaultPrice('com', 'USD');
   const customRenewUsd = Number((baseline.basePrice + 2).toFixed(2));
   const dp = new DomainPrices({
-    ...DEFAULTS_Sept2025,
+    ...DEFAULT_RATES,
     renewPrices: { com: customRenewUsd },
   });
   const renew = await dp.getPrice('com', 'USD', { transaction: 'renew' });

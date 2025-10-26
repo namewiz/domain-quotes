@@ -8,4 +8,5 @@ docs/**
 tests/**
 demo/**
 tsconfig.json
+todo*
 package-lock.json

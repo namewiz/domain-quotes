@@ -287,7 +287,7 @@
       const listSupportedCurrencies = (typeof mod.listSupportedCurrencies === 'function') ? mod.listSupportedCurrencies : (() => ['USD', 'GBP', 'EUR', 'NGN']);
       const getDefaultPrice = mod.getDefaultPrice || mod.getPrice; // compat with older builds
       const DomainPrices = mod.DomainPrices;
-      const DEFAULTS_Sept2025 = mod.DEFAULTS_Sept2025;
+      const DEFAULT_RATES = mod.DEFAULT_RATES;
 
       // TLDs to generate from query (deduped)
       const TLDS = ["com", "org", "net", "ai", "info", "xyz", "site",];
@@ -378,9 +378,9 @@
         // Build pricing provider (with markup when selected). Falls back to default function when unavailable.
         let dp = null;
         try {
-          if (DomainPrices && DEFAULTS_Sept2025) {
+          if (DomainPrices && DEFAULT_RATES) {
             const markup = getMarkupConfig();
-            const cfg = markup ? { ...DEFAULTS_Sept2025, markup } : DEFAULTS_Sept2025;
+            const cfg = markup ? { ...DEFAULT_RATES, markup } : DEFAULT_RATES;
             dp = new DomainPrices(cfg);
           }
         } catch { /* noop */ }

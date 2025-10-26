@@ -1,6 +1,6 @@
 {
   "name": "domain-quotes",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Fast multi-currency domain price checker library across registrars.",
   "type": "module",
   "main": "./dist/index.js",

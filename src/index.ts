@@ -328,7 +328,7 @@ export class DomainPrices {
 }
 
 // Build default config snapshot from the bundled JSON data.
-export const DEFAULTS_Sept2025: DomainPricesConfig = {
+export const DEFAULT_RATES: DomainPricesConfig = {
   createPrices: loadPrices(),
   exchangeRates: loadExchangeRates(),
   vatRates: loadVatRates(),
@@ -341,6 +341,6 @@ export async function getDefaultPrice(
   currencyCode: string,
   options: GetPriceOptions = {}
 ): Promise<PriceQuote> {
-  const dp = new DomainPrices(DEFAULTS_Sept2025);
+  const dp = new DomainPrices(DEFAULT_RATES);
   return dp.getPrice(extension, currencyCode, options);
 }

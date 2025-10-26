@@ -25,19 +25,19 @@ npm i domainprices
 Usage
 
 ```ts
-import { getDefaultPrice, DomainPrices, DEFAULTS_Sept2025 } from 'domainprices';
+import { getDefaultPrice, DomainPrices, DEFAULT_RATES } from 'domainprices';
 
 // Quick price (uses bundled defaults)
 const quote = await getDefaultPrice('com', 'USD', { discountCodes: ['SAVE10'] });
 // → { extension, currency, basePrice, discount, tax, totalPrice, symbol }
 
 // Advanced: custom or explicit config via the class
-const dp = new DomainPrices(DEFAULTS_Sept2025); // or provide your own DomainPricesConfig
+const dp = new DomainPrices(DEFAULT_RATES); // or provide your own DomainPricesConfig
 const eur = await dp.getPrice('example.com', 'EUR', { discountPolicy: 'stack' });
 
 // Add a 15% markup before discounts/taxes
 const withMarkup = new DomainPrices({
-  ...DEFAULTS_Sept2025,
+  ...DEFAULT_RATES,
   markup: { type: 'percentage', value: 0.15 },
 });
 const quoteWithMarkup = await withMarkup.getPrice('example.com', 'USD', { discountCodes: ['SAVE10'] });
@@ -54,7 +54,7 @@ API
 
 - `class DomainPrices(config: DomainPricesConfig)`
   - `getPrice(extension: string, currency: string, options?: GetPriceOptions): Promise<PriceQuote>` – same behavior as above, but uses the provided config.
-  - `DEFAULTS_Sept2025: DomainPricesConfig` – exported snapshot config used by `getDefaultPrice`.
+  - `DEFAULT_RATES: DomainPricesConfig` – exported snapshot config used by `getDefaultPrice`.
 
 - `listSupportedExtensions(): string[]`
   - All extensions with a non-zero price in the dataset.
