@@ -19,14 +19,12 @@ test('supported currency list contains core set', () => {
   ['USD', 'GBP', 'EUR', 'NGN'].forEach((c) => assert.ok(list.includes(c)));
 });
 
-test('supported extensions includes com and excludes io (in data set)', () => {
+test('supported extensions includes com and basic resolution works', () => {
   const list = listSupportedExtensions();
   assert.ok(list.includes('com'));
-  // openprovider-prices.json has null for io, should be unsupported
-  assert.ok(!list.includes('io'));
   assert.equal(isSupportedExtension('com'), true);
   assert.equal(isSupportedExtension('example.com'), true);
-  assert.equal(isSupportedExtension('io'), false);
+  assert.equal(isSupportedExtension('unknown-tld'), false);
 });
 
 test('isSupportedCurrency basic checks', () => {

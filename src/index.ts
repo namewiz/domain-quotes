@@ -1,8 +1,5 @@
 import discountsJson from './data/discount.json' assert { type: 'json' };
-import exchangeRatesJson from './data/exchange-rates.json' assert { type: 'json' };
-import openProviderPricesJson from './data/openprovider-prices.json' assert { type: 'json' };
 import vatRatesJson from './data/vat-rates.json' assert { type: 'json' };
-// Removed tldts dependency; implement internal suffix resolution.
 
 export interface PriceQuote {
   extension: string;
@@ -79,18 +76,15 @@ export function isSupportedCurrency(code: string): boolean {
 }
 
 export function listSupportedExtensions(): string[] {
-  const raw = openProviderPricesJson as Record<string, { productPrice?: number } | null | undefined>;
-  return Object.entries(raw)
-    .filter(([, info]) => info && typeof info.productPrice === 'number' && info.productPrice! > 0)
-    .map(([ext]) => ext)
-    .sort();
+  const prices = loadPrices();
+  return Object.keys(prices).sort();
 }
 
 export function isSupportedExtension(extOrDomain: string): boolean {
-  const ext = normalizeExtensionOrDomainUsing(loadPrices(), extOrDomain);
-  const raw = openProviderPricesJson as Record<string, { productPrice?: number } | null | undefined>;
-  const info = raw[ext];
-  return Boolean(info && typeof info.productPrice === 'number' && info.productPrice! > 0);
+  const prices = loadPrices();
+  const ext = normalizeExtensionOrDomainUsing(prices, extOrDomain);
+  const value = prices[ext];
+  return typeof value === 'number' && value > 0;
 }
 
 function normalizeExtensionOrDomainUsing(prices: Record<string, number>, input: string): string {
@@ -124,20 +118,59 @@ function asNowValue(now?: number | Date): number {
   return Date.now();
 }
 
-function loadPrices(): Record<string, number> {
-  const raw = openProviderPricesJson as Record<string, { productPrice?: number } | null | undefined>;
+// Remote data sources
+const UNIFIED_CREATE_PRICES_CSV =
+  'https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/unified-create-prices.csv';
+const EXCHANGE_RATES_JSON_URL =
+  'https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/exchange-rates.json';
+
+async function fetchText(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+  return res.text();
+}
+
+async function fetchJson<T = unknown>(url: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+  return res.json() as Promise<T>;
+}
+
+function parseUnifiedPricesCsv(csv: string): Record<string, number> {
+  // CSV columns: tld,provider,amount
+  const lines = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return {};
+  const header = lines.shift()!; // remove header
+  // Accept header validation lightly (avoid strict coupling)
   const result: Record<string, number> = {};
-  Object.entries(raw).forEach(([ext, info]) => {
-    if (!info) return;
-    const value = info.productPrice;
-    if (value === undefined || value === null || value === 0) return;
-    result[ext] = value;
-  });
+  for (const line of lines) {
+    const parts = line.split(',');
+    if (parts.length < 3) continue;
+    const tld = parts[0]?.trim().toLowerCase();
+    // const provider = parts[1]?.trim().toLowerCase(); // not currently used
+    const amountStr = parts[2]?.trim();
+    const amount = Number(amountStr);
+    if (!tld || !Number.isFinite(amount) || amount <= 0) continue;
+    // Use the lowest amount across providers for each TLD
+    if (!(tld in result) || amount < result[tld]) {
+      result[tld] = amount;
+    }
+  }
   return result;
 }
 
+// Fetch remote datasets once at module load (Node ESM supports top-level await)
+const [CREATE_PRICES, EXCHANGE_RATES] = await Promise.all([
+  fetchText(UNIFIED_CREATE_PRICES_CSV).then(parseUnifiedPricesCsv),
+  fetchJson<ExchangeRateData[]>(EXCHANGE_RATES_JSON_URL),
+]);
+
+function loadPrices(): Record<string, number> {
+  return CREATE_PRICES;
+}
+
 function loadExchangeRates(): ExchangeRateData[] {
-  return exchangeRatesJson as ExchangeRateData[];
+  return EXCHANGE_RATES;
 }
 
 function loadVatRates(): VatRates {

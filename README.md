@@ -9,8 +9,8 @@
 DomainPrices is a lightweight TypeScript/JavaScript library to compute domain registration prices across currencies with discounts and VAT, using curated datasets.
 
 Includes:
-- Extension support based on OpenProvider price data
-- Currency conversion via baked-in exchange rates
+- Extension support based on unified registrar price list (OpenProvider/NIRA)
+- Currency conversion via remote exchange rates
 - VAT calculation per currency (US, GB, DE, NG mapping)
 - Optional discount codes with max-or-stack policy
 - Configurable markup to increase base prices before taxes/discounts
@@ -135,7 +135,10 @@ Notes
 
 - Rounding is to 2 decimal places at each step to keep totals predictable (`base`, `discount`, `tax`, `total`).
 - VAT mapping is intentionally narrow and explicit by currency → country: `USD → US (0)`, `GBP → GB (0.2)`, `EUR → DE (0.19)`, `NGN → NG (0.075)`.
-- Exchange rates and price tables are bundled static JSON.
+- Price and exchange-rate data are fetched from maintained remote sources at import time:
+  - Prices: `https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/unified-create-prices.csv`
+  - Exchange rates: `https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/exchange-rates.json`
+  These are cached in-memory for the life of the process.
 
 ## Testing
 
