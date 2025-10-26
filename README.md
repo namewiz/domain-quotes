@@ -76,6 +76,7 @@ interface GetPriceOptions {
   discountCodes?: string[];
   now?: number | Date;
   discountPolicy?: DiscountPolicy;
+  transaction?: 'create' | 'renew' | 'restore' | 'transfer'; // default 'create'
 }
 
 type MarkupType = 'percentage' | 'fixed_usd';
@@ -93,6 +94,7 @@ interface PriceQuote {
   tax: number;
   totalPrice: number;
   symbol: string;
+  transaction: 'create' | 'renew' | 'restore' | 'transfer';
 }
 
 interface ExchangeRateData {
@@ -112,7 +114,11 @@ interface DiscountConfig {
 }
 
 interface DomainPricesConfig {
-  prices: Record<string, number>;              // base USD prices keyed by extension
+  createPrices: Record<string, number>;        // base USD prices for create
+  // Optional price tables per transaction type (all USD). Falls back to `createPrices` when absent.
+  renewPrices?: Record<string, number>;
+  restorePrices?: Record<string, number>;
+  transferPrices?: Record<string, number>;
   exchangeRates: ExchangeRateData[];           // currency conversion data
   vatRates: Record<string, number>;            // ISO country code → VAT rate
   discounts: Record<string, DiscountConfig>;   // discount code → config

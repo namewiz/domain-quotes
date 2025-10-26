@@ -135,3 +135,30 @@ test('errors on unsupported currency', async () => {
     (err) => err instanceof UnsupportedCurrencyError && err.code === 'ERR_UNSUPPORTED_CURRENCY'
   );
 });
+
+test('transaction option defaults to create and falls back to default prices', async () => {
+  const createQuote = await getDefaultPrice('com', 'USD');
+  const renewQuote = await getDefaultPrice('com', 'USD', { transaction: 'renew' });
+  const transferQuote = await getDefaultPrice('com', 'USD', { transaction: 'transfer' });
+  const restoreQuote = await getDefaultPrice('com', 'USD', { transaction: 'restore' });
+
+  assert.equal(renewQuote.basePrice, createQuote.basePrice);
+  assert.equal(transferQuote.basePrice, createQuote.basePrice);
+  assert.equal(restoreQuote.basePrice, createQuote.basePrice);
+
+  assert.equal(createQuote.transaction, 'create');
+  assert.equal(renewQuote.transaction, 'renew');
+  assert.equal(transferQuote.transaction, 'transfer');
+  assert.equal(restoreQuote.transaction, 'restore');
+});
+
+test('renewPrices override is used when provided in config', async () => {
+  const baseline = await getDefaultPrice('com', 'USD');
+  const customRenewUsd = Number((baseline.basePrice + 2).toFixed(2));
+  const dp = new DomainPrices({
+    ...DEFAULTS_Sept2025,
+    renewPrices: { com: customRenewUsd },
+  });
+  const renew = await dp.getPrice('com', 'USD', { transaction: 'renew' });
+  assert.equal(renew.basePrice, customRenewUsd);
+});

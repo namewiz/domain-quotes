@@ -12,6 +12,7 @@ export interface PriceQuote {
   tax: number;
   totalPrice: number;
   symbol: string;
+  transaction: TransactionType;
 }
 
 export type MarkupType = 'percentage' | 'fixedUsd';
@@ -40,15 +41,21 @@ export interface DiscountConfig {
 }
 
 export type DiscountPolicy = 'stack' | 'max';
+export type TransactionType = 'create' | 'renew' | 'restore' | 'transfer';
 
 export interface GetPriceOptions {
   discountCodes?: string[];
   now?: number | Date;
   discountPolicy?: DiscountPolicy;
+  transaction?: TransactionType; // default: 'create'
 }
 
 export interface DomainPricesConfig {
-  prices: Record<string, number>;
+  createPrices: Record<string, number>;
+  // Optional alternative price tables by transaction type (USD). Falls back to `createPrices` when not provided.
+  renewPrices?: Record<string, number>;
+  restorePrices?: Record<string, number>;
+  transferPrices?: Record<string, number>;
   exchangeRates: ExchangeRateData[];
   vatRates: VatRates;
   discounts: Record<string, DiscountConfig>;
@@ -212,12 +219,29 @@ export class DomainPrices {
     currencyCode: string,
     options: GetPriceOptions = {}
   ): Promise<PriceQuote> {
-    const prices = this.config.prices;
+    const createPrices = this.config.createPrices;
     const vatRates = this.config.vatRates;
     const discounts = this.config.discounts;
 
-    const ext = normalizeExtensionOrDomainUsing(prices, extension);
-    const baseUsd = prices[ext];
+    const ext = normalizeExtensionOrDomainUsing(createPrices, extension);
+    const tx: TransactionType = options.transaction || 'create';
+    // Select base USD using transaction-specific table when available; otherwise fallback to default `createPrices`.
+    let baseUsd: number | undefined;
+    switch (tx) {
+      case 'renew':
+        baseUsd = this.config.renewPrices?.[ext] ?? createPrices[ext];
+        break;
+      case 'restore':
+        baseUsd = this.config.restorePrices?.[ext] ?? createPrices[ext];
+        break;
+      case 'transfer':
+        baseUsd = this.config.transferPrices?.[ext] ?? createPrices[ext];
+        break;
+      case 'create':
+      default:
+        baseUsd = createPrices[ext];
+        break;
+    }
     if (baseUsd === undefined || baseUsd === 0) {
       throw new UnsupportedExtensionError(ext);
     }
@@ -266,13 +290,13 @@ export class DomainPrices {
     const tax = round2(subtotal * taxRate);
     const totalPrice = round2(subtotal + tax);
 
-    return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol };
+    return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol, transaction: tx };
   }
 }
 
 // Build default config snapshot from the bundled JSON data.
 export const DEFAULTS_Sept2025: DomainPricesConfig = {
-  prices: loadPrices(),
+  createPrices: loadPrices(),
   exchangeRates: loadExchangeRates(),
   vatRates: loadVatRates(),
   discounts: loadDiscounts(),
