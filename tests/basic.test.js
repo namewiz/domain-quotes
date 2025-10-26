@@ -62,29 +62,29 @@ test('getDefaultPrice applies tax by currency (GBP/EUR/NGN)', async () => {
 });
 
 test('getDefaultPrice applies highest discount only by default', async () => {
-  // Given the current dataset, only SAVE10 is active into 2025
+  // Given the current dataset, only SAVE1 is active into 2025
   const noDisc = await getDefaultPrice('com', 'USD');
-  const withDisc = await getDefaultPrice('com', 'USD', { discountCodes: ['save10', 'NEWUSER15', 'invalid'] });
-  assert.equal(withDisc.discount, Number((noDisc.basePrice * 0.1).toFixed(2)));
+  const withDisc = await getDefaultPrice('com', 'USD', { discountCodes: ['save1', 'NEWUSER15', 'invalid'] });
+  assert.equal(withDisc.discount, Number((noDisc.basePrice * 0.01).toFixed(2)));
   assert.equal(withDisc.totalPrice, Number((withDisc.basePrice - withDisc.discount + withDisc.tax).toFixed(2)));
 });
 
 test('discount does not apply when extension not eligible', async () => {
-  // SAVE10 is for com/net only
-  const xyz = await getDefaultPrice('xyz', 'USD', { discountCodes: ['SAVE10'] });
+  // SAVE1 is for com/net only
+  const xyz = await getDefaultPrice('xyz', 'USD', { discountCodes: ['SAVE1'] });
   assert.equal(xyz.discount, 0);
 });
 
 test('percentage markup increases base price before discounting', async () => {
-  const baseline = await getDefaultPrice('com', 'USD', { discountCodes: ['SAVE10'] });
+  const baseline = await getDefaultPrice('com', 'USD', { discountCodes: ['SAVE1'] });
   const dp = new DomainPrices({
     ...DEFAULTS_Sept2025,
     markup: { type: 'percentage', value: 0.25 },
   });
-  const quote = await dp.getPrice('com', 'USD', { discountCodes: ['SAVE10'] });
+  const quote = await dp.getPrice('com', 'USD', { discountCodes: ['SAVE1'] });
   const expected = Number((baseline.basePrice * 1.25).toFixed(2));
   assert.equal(quote.basePrice, expected);
-  assert.equal(quote.discount, Number((expected * 0.1).toFixed(2))); // SAVE10 applies
+  assert.equal(quote.discount, Number((expected * 0.01).toFixed(2))); // SAVE1 applies
 });
 
 test('fixed USD markup adjusts prices before currency conversion', async () => {
