@@ -54,5 +54,6 @@ export interface DomainPricesConfig {
   vatRates: VatRates;
   discounts: Record<string, DiscountConfig>;
   markup?: PriceMarkup;
+  // Uppercase ISO 4217 currency codes allowed. Defaults to ['USD', 'NGN'].
+  supportedCurrencies?: string[];
 }
-

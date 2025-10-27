@@ -15,21 +15,16 @@ export type {
   DiscountPolicy, DomainPricesConfig, ExchangeRateData, GetPriceOptions, MarkupType, PriceMarkup, PriceQuote, TransactionType, VatRates
 } from './types';
 
-
-// Narrow, explicit support for VAT mapping by currency
-const currencyToCountry: Record<string, string> = {
-  USD: 'US',
-  GBP: 'GB',
-  EUR: 'DE',
-  NGN: 'NG',
-};
-
 export function listSupportedCurrencies(): string[] {
-  return Object.keys(currencyToCountry);
+  // Use the configured default when available; fall back to core set
+  return (DEFAULT_CONFIG.supportedCurrencies ?? ['USD', 'NGN']).slice();
 }
 
 export function isSupportedCurrency(code: string): boolean {
-  return code != null && currencyToCountry.hasOwnProperty(code.toUpperCase());
+  if (!code) return false;
+  const upper = code.toUpperCase();
+  const list = listSupportedCurrencies();
+  return list.includes(upper);
 }
 
 export function listSupportedExtensions(): string[] {
@@ -219,12 +214,8 @@ export class DomainPrices {
     }
 
     const currency = (currencyCode || '').toUpperCase();
-    const iso = currencyToCountry[currency];
-    if (!iso) {
-      throw new UnsupportedCurrencyError(currencyCode);
-    }
-    const taxRate = vatRates[iso];
-    if (typeof taxRate !== 'number') {
+    const supported = this.config.supportedCurrencies ?? ['USD', 'NGN'];
+    if (!supported.includes(currency)) {
       throw new UnsupportedCurrencyError(currencyCode);
     }
 
@@ -232,6 +223,12 @@ export class DomainPrices {
     const symbol = rateInfo.currencySymbol;
     const markedUsd = applyMarkup(baseUsd, this.config.markup);
     const basePrice = round2(markedUsd * rateInfo.exchangeRate);
+
+    const iso = rateInfo.countryCode;
+    const taxRate = vatRates[iso];
+    if (typeof taxRate !== 'number') {
+      throw new UnsupportedCurrencyError(currencyCode);
+    }
 
     const uniqueCodes = Array.from(new Set((options.discountCodes || []).map((c) => c.toUpperCase())));
     const nowMs = asNowValue(options.now);
@@ -276,11 +273,12 @@ export class DomainPrices {
 }
 
 // Build default config snapshot from the bundled JSON data.
-export const DEFAULT_RATES: DomainPricesConfig = {
+export const DEFAULT_CONFIG: DomainPricesConfig = {
   createPrices: loadPrices(),
   exchangeRates: loadExchangeRates(),
   vatRates: loadVatRates(),
   discounts: loadDiscounts(),
+  supportedCurrencies: ['USD', 'NGN'],
 };
 
 // Back-compat wrapper that uses the default config
@@ -289,7 +287,7 @@ export async function getDefaultPrice(
   currencyCode: string,
   options: GetPriceOptions = {}
 ): Promise<PriceQuote> {
-  const dp = new DomainPrices(DEFAULT_RATES);
+  const dp = new DomainPrices(DEFAULT_CONFIG);
   return dp.getPrice(extension, currencyCode, options);
 }
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  DEFAULT_RATES,
+  DEFAULT_CONFIG as DEFAULT_RATES,
   DomainPrices,
   getDefaultPrice,
   isSupportedCurrency,
@@ -13,10 +13,14 @@ import {
   UnsupportedExtensionError,
 } from '../dist/index.js';
 
-test('supported currency list contains core set', () => {
+test('supported currency list defaults to [USD, NGN]', () => {
   const list = listSupportedCurrencies();
   assert.ok(Array.isArray(list));
-  ['USD', 'GBP', 'EUR', 'NGN'].forEach((c) => assert.ok(list.includes(c)));
+  assert.ok(list.includes('USD'));
+  assert.ok(list.includes('NGN'));
+  // GBP/EUR are not enabled by default
+  assert.equal(list.includes('GBP'), false);
+  assert.equal(list.includes('EUR'), false);
 });
 
 test('supported extensions includes com and basic resolution works', () => {
@@ -41,6 +45,9 @@ test('normalization only lowercases and strips leading dots', () => {
 test('isSupportedCurrency basic checks', () => {
   assert.equal(isSupportedCurrency('USD'), true);
   assert.equal(isSupportedCurrency('usd'), true);
+  assert.equal(isSupportedCurrency('NGN'), true);
+  assert.equal(isSupportedCurrency('GBP'), false);
+  assert.equal(isSupportedCurrency('EUR'), false);
   assert.equal(isSupportedCurrency('JPY'), false);
 });
 
@@ -55,21 +62,28 @@ test('getDefaultPrice computes USD price and no tax for US', async () => {
   assert.equal(quote.totalPrice, Number((quote.basePrice - quote.discount + quote.tax).toFixed(2)));
 });
 
-test('getDefaultPrice applies tax by currency (GBP/EUR/NGN)', async () => {
-  // GBP -> GB -> 20%
-  const gb = await getDefaultPrice('com', 'GBP');
-  const expectedGbTax = Number(((gb.basePrice - gb.discount) * 0.2).toFixed(2));
-  assert.equal(gb.tax, expectedGbTax);
-
-  // EUR -> DE -> 19%
-  const eu = await getDefaultPrice('com', 'EUR');
-  const expectedEuTax = Number(((eu.basePrice - eu.discount) * 0.19).toFixed(2));
-  assert.equal(eu.tax, expectedEuTax);
-
+test('getDefaultPrice applies tax by currency for NGN by default', async () => {
   // NGN -> NG -> 7.5%
   const ng = await getDefaultPrice('com', 'NGN');
   const expectedNgTax = Number(((ng.basePrice - ng.discount) * 0.075).toFixed(2));
   assert.equal(ng.tax, expectedNgTax);
+});
+
+test('DomainPrices respects custom supportedCurrencies for GBP/EUR', async () => {
+  const dp = new DomainPrices({
+    ...DEFAULT_RATES,
+    supportedCurrencies: ['USD', 'NGN', 'GBP', 'EUR'],
+  });
+
+  // GBP -> GB -> 20%
+  const gb = await dp.getPrice('com', 'GBP');
+  const expectedGbTax = Number(((gb.basePrice - gb.discount) * 0.2).toFixed(2));
+  assert.equal(gb.tax, expectedGbTax);
+
+  // EUR -> DE -> 19%
+  const eu = await dp.getPrice('com', 'EUR');
+  const expectedEuTax = Number(((eu.basePrice - eu.discount) * 0.19).toFixed(2));
+  assert.equal(eu.tax, expectedEuTax);
 });
 
 test('getDefaultPrice applies highest discount only by default', async () => {
@@ -104,7 +118,7 @@ test('fixed USD markup adjusts prices before currency conversion', async () => {
 
   // Baseline without markup
   const baselineUsd = await getDefaultPrice(ext, 'USD');
-  const baselineEur = await getDefaultPrice(ext, 'EUR');
+  const baselineNgn = await getDefaultPrice(ext, 'NGN');
 
   // With fixed USD markup (added before conversion)
   const dp = new DomainPrices({
@@ -112,7 +126,7 @@ test('fixed USD markup adjusts prices before currency conversion', async () => {
     markup: { type: 'fixedUsd', value: markupUsd },
   });
   const quotedUsd = await dp.getPrice(ext, 'USD');
-  const quotedEur = await dp.getPrice(ext, 'EUR');
+  const quotedNgn = await dp.getPrice(ext, 'NGN');
 
   // USD base increases exactly by the USD markup value
   assert.equal(
@@ -120,13 +134,13 @@ test('fixed USD markup adjusts prices before currency conversion', async () => {
     Number((baselineUsd.basePrice + markupUsd).toFixed(2))
   );
 
-  // EUR base increase ~= USD markup scaled by EUR rate (rounding tolerance)
-  const eurRate = DEFAULT_RATES.exchangeRates.find((r) => r.currencyCode === 'EUR')?.exchangeRate;
-  assert.ok(typeof eurRate === 'number');
-  const expectedEurIncrease = Number((markupUsd * eurRate).toFixed(2));
-  const actualEurIncrease = Number((quotedEur.basePrice - baselineEur.basePrice).toFixed(2));
+  // NGN base increase ~= USD markup scaled by NGN rate (rounding tolerance)
+  const ngnRate = DEFAULT_RATES.exchangeRates.find((r) => r.currencyCode === 'NGN')?.exchangeRate;
+  assert.ok(typeof ngnRate === 'number');
+  const expectedNgnIncrease = Number((markupUsd * ngnRate).toFixed(2));
+  const actualNgnIncrease = Number((quotedNgn.basePrice - baselineNgn.basePrice).toFixed(2));
   // Allow ±0.01 because each base is rounded separately
-  assert.ok(Math.abs(actualEurIncrease - expectedEurIncrease) <= 0.01);
+  assert.ok(Math.abs(actualNgnIncrease - expectedNgnIncrease) <= 0.01);
 });
 
 // priceForDomain API removed; getDefaultPrice accepts an extension.
