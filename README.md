@@ -8,6 +8,11 @@
 
 Domain Quote is a lightweight TypeScript/JavaScript library to compute domain registration quotes across currencies with discounts and VAT, using curated datasets.
 
+[![Build](https://github.com/namewiz/domain-quotes/actions/workflows/build.yml/badge.svg)](https://github.com/namewiz/domain-quotes/actions/workflows/build.yml)
+[![Test](https://github.com/namewiz/domain-quotes/actions/workflows/test.yml/badge.svg)](https://github.com/namewiz/domain-quotes/actions/workflows/test.yml)
+[![NPM](http://img.shields.io/npm/v/domain-quotes.svg)](https://www.npmjs.com/package/domain-quotes)
+[![License](https://img.shields.io/npm/l/domain-quotes.svg)](https://github.com/namewiz/domain-quotes/blob/main/LICENSE)
+
 Includes:
 - Extension support based on unified registrar price list (OpenProvider/NIRA)
 - Currency conversion via remote exchange rates
