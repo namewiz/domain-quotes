@@ -1,16 +1,16 @@
 import discountsJson from './data/discount.json' assert { type: 'json' };
 import type {
   DiscountConfig,
-  DomainPricesConfig,
+  DomainQuoteConfig,
   ExchangeRateData,
-  GetPriceOptions,
-  PriceMarkup,
-  PriceQuote,
+  GetQuoteOptions,
+  Markup,
+  Quote,
   TransactionType
 } from './types';
 export type {
   DiscountConfig,
-  DiscountPolicy, DomainPricesConfig, ExchangeRateData, GetPriceOptions, MarkupType, PriceMarkup, PriceQuote, TransactionType
+  DiscountPolicy, DomainQuoteConfig, ExchangeRateData, GetQuoteOptions, Markup, MarkupType, Quote, TransactionType
 } from './types';
 
 export const DEFAULT_VAT_RATE = 0.075;
@@ -111,23 +111,23 @@ function loadDiscounts(): Record<string, DiscountConfig> {
   return discountsJson as Record<string, DiscountConfig>;
 }
 
-class DomainPricesError extends Error {
+class DomainQuoteError extends Error {
   code: string;
   constructor (code: string, message: string) {
     super(message);
-    this.name = 'DomainPricesError';
+    this.name = 'DomainQuoteError';
     this.code = code;
   }
 }
 
-export class UnsupportedExtensionError extends DomainPricesError {
+export class UnsupportedExtensionError extends DomainQuoteError {
   constructor (ext: string) {
     super('ERR_UNSUPPORTED_EXTENSION', `Unsupported extension: ${ext}`);
     this.name = 'UnsupportedExtensionError';
   }
 }
 
-export class UnsupportedCurrencyError extends DomainPricesError {
+export class UnsupportedCurrencyError extends DomainQuoteError {
   constructor (currency: string) {
     super('ERR_UNSUPPORTED_CURRENCY', `Unsupported currency: ${currency}`);
     this.name = 'UnsupportedCurrencyError';
@@ -149,7 +149,7 @@ function round2(n: number): number {
   return Number(n.toFixed(2));
 }
 
-function applyMarkup(baseUsd: number, markup?: PriceMarkup): number {
+function applyMarkup(baseUsd: number, markup?: Markup): number {
   if (!markup) return baseUsd;
   const value = typeof markup.value === 'number' ? markup.value : 0;
   if (!Number.isFinite(value) || value <= 0) return baseUsd;
@@ -163,10 +163,10 @@ function applyMarkup(baseUsd: number, markup?: PriceMarkup): number {
   }
 }
 
-export class DomainPrices {
-  private readonly config: DomainPricesConfig;
+export class DomainQuotes {
+  private readonly config: DomainQuoteConfig;
 
-  constructor (config: DomainPricesConfig) {
+  constructor (config: DomainQuoteConfig) {
     this.config = config;
   }
 
@@ -177,11 +177,11 @@ export class DomainPrices {
     return found;
   }
 
-  async getPrice(
+  async getQuote(
     extension: string,
     currencyCode: string,
-    options: GetPriceOptions = {}
-  ): Promise<PriceQuote> {
+    options: GetQuoteOptions = {}
+  ): Promise<Quote> {
     const createPrices = this.config.createPrices;
     const vatRate = typeof this.config.vatRate === 'number' ? this.config.vatRate : DEFAULT_VAT_RATE;
     const discounts = this.config.discounts;
@@ -253,19 +253,10 @@ export class DomainPrices {
 
     return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol, transaction: tx };
   }
-
-  // Alias for readability when thinking in terms of quotes
-  async getQuote(
-    extension: string,
-    currencyCode: string,
-    options: GetPriceOptions = {}
-  ): Promise<PriceQuote> {
-    return this.getPrice(extension, currencyCode, options);
-  }
 }
 
 // Build default config snapshot from the bundled JSON data.
-export const DEFAULT_CONFIG: DomainPricesConfig = {
+export const DEFAULT_CONFIG: DomainQuoteConfig = {
   createPrices: loadPrices(),
   exchangeRates: loadExchangeRates(),
   vatRate: DEFAULT_VAT_RATE,
@@ -273,27 +264,11 @@ export const DEFAULT_CONFIG: DomainPricesConfig = {
   supportedCurrencies: ['USD', 'NGN'],
 };
 
-// Back-compat wrapper that uses the default config
-export async function getDefaultPrice(
-  extension: string,
-  currencyCode: string,
-  options: GetPriceOptions = {}
-): Promise<PriceQuote> {
-  const dp = new DomainPrices(DEFAULT_CONFIG);
-  return dp.getPrice(extension, currencyCode, options);
-}
-
-// Back-compat friendly alias aligned with project name
 export async function getDefaultQuote(
   extension: string,
   currencyCode: string,
-  options: GetPriceOptions = {}
-): Promise<PriceQuote> {
-  return getDefaultPrice(extension, currencyCode, options);
+  options: GetQuoteOptions = {}
+): Promise<Quote> {
+  const dq = new DomainQuotes(DEFAULT_CONFIG);
+  return dq.getQuote(extension, currencyCode, options);
 }
-
-// Named export alias for the class to reflect new branding
-export { DomainPrices as DomainQuote };
-
-// Type alias for convenience when referring to a quote
-export type Quote = PriceQuote;

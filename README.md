@@ -25,37 +25,37 @@ npm i domain-quotes
 Usage
 
 ```ts
-import { getDefaultQuote, DomainPrices, DEFAULT_RATES } from 'domain-quotes';
+import { getDefaultQuote, DomainQuotes, DEFAULT_CONFIG } from 'domain-quotes';
 
 // Quick quote (uses bundled defaults)
 const quote = await getDefaultQuote('com', 'USD', { discountCodes: ['SAVE10'] });
 // → { extension, currency, basePrice, discount, tax, totalPrice, symbol }
 
 // Advanced: custom or explicit config via the class
-const dp = new DomainPrices(DEFAULT_RATES); // or provide your own DomainPricesConfig
-const eur = await dp.getPrice('example.com', 'EUR', { discountPolicy: 'stack' });
+const dq = new DomainQuotes(DEFAULT_CONFIG); // or provide your own DomainQuoteConfig
+const eur = await dq.getQuote('example.com', 'EUR', { discountPolicy: 'stack' });
 
 // Add a 15% markup before discounts/taxes
-const withMarkup = new DomainPrices({
-  ...DEFAULT_RATES,
+const withMarkup = new DomainQuotes({
+  ...DEFAULT_CONFIG,
   markup: { type: 'percentage', value: 0.15 },
 });
-const quoteWithMarkup = await withMarkup.getPrice('example.com', 'USD', { discountCodes: ['SAVE10'] });
+const quoteWithMarkup = await withMarkup.getQuote('example.com', 'USD', { discountCodes: ['SAVE10'] });
+
 ```
 
 API
 
-- `getDefaultQuote(extension: string, currency: string, options?: GetPriceOptions): Promise<PriceQuote>`
+- `getDefaultQuote(extension: string, currency: string, options?: GetQuoteOptions): Promise<Quote>`
   - Computes a quote for a TLD/SLD extension (e.g. `com`, `com.ng`, `.org`) using the bundled defaults.
-  - Alias: `getDefaultPrice(...)` for backward-compatibility.
   - `options`
     - `discountCodes?: string[]` – one or more codes; case-insensitive.
     - `now?: number | Date` – inject time for deterministic tests.
     - `discountPolicy?: 'stack' | 'max'` – default `'max'` (highest single discount only).
 
-- `class DomainPrices(config: DomainPricesConfig)`
-  - `getPrice(extension: string, currency: string, options?: GetPriceOptions): Promise<PriceQuote>` – same behavior as above, but uses the provided config. Alias: `getQuote(...)`.
-  - `DEFAULT_RATES: DomainPricesConfig` – exported snapshot config used by `getDefaultQuote`.
+- `class DomainQuotes(config: DomainQuoteConfig)`
+  - `getQuote(extension: string, currency: string, options?: GetQuoteOptions): Promise<Quote>` – same behavior as above, but uses the provided config.
+  - `DEFAULT_CONFIG: DomainQuoteConfig` – exported snapshot config used by `getDefaultQuote`.
 
 - `listSupportedExtensions(): string[]`
   - All extensions with a non-zero price in the dataset.
@@ -73,21 +73,21 @@ Types
 ```ts
 type DiscountPolicy = 'stack' | 'max';
 
-interface GetPriceOptions {
+interface GetQuoteOptions {
   discountCodes?: string[];
   now?: number | Date;
   discountPolicy?: DiscountPolicy;
   transaction?: 'create' | 'renew' | 'restore' | 'transfer'; // default 'create'
 }
 
-type MarkupType = 'percentage' | 'fixed_usd';
+type MarkupType = 'percentage' | 'fixedUsd';
 
-interface PriceMarkup {
-  type: MarkupType;            // percentage -> 0.2 === +20%, fixed_usd -> +$ value before conversion
+interface Markup {
+  type: MarkupType;            // percentage -> 0.2 === +20%, fixedUsd -> +$ value before conversion
   value: number;
 }
 
-interface PriceQuote {
+interface Quote {
   extension: string;
   currency: string;
   basePrice: number;
@@ -114,7 +114,7 @@ interface DiscountConfig {
   endAt: string;   // ISO timestamp
 }
 
-interface DomainPricesConfig {
+interface DomainQuoteConfig {
   createPrices: Record<string, number>;        // base USD prices for create
   // Optional price tables per transaction type (all USD). Falls back to `createPrices` when absent.
   renewPrices?: Record<string, number>;
@@ -123,7 +123,7 @@ interface DomainPricesConfig {
   exchangeRates: ExchangeRateData[];           // currency conversion data
   vatRate: number;                             // single VAT rate applied to subtotal
   discounts: Record<string, DiscountConfig>;   // discount code → config
-  markup?: PriceMarkup;                        // optional markup applied before conversion
+  markup?: Markup;                             // optional markup applied before conversion
 }
 ```
 

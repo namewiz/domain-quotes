@@ -1,4 +1,4 @@
-export interface PriceQuote {
+export interface Quote {
   extension: string;
   currency: string;
   basePrice: number;
@@ -11,7 +11,7 @@ export interface PriceQuote {
 
 export type MarkupType = 'percentage' | 'fixedUsd';
 
-export interface PriceMarkup {
+export interface Markup {
   type: MarkupType;
   value: number;
 }
@@ -35,14 +35,14 @@ export interface DiscountConfig {
 export type DiscountPolicy = 'stack' | 'max';
 export type TransactionType = 'create' | 'renew' | 'restore' | 'transfer';
 
-export interface GetPriceOptions {
+export interface GetQuoteOptions {
   discountCodes?: string[];
   now?: number | Date;
   discountPolicy?: DiscountPolicy;
   transaction?: TransactionType; // default: 'create'
 }
 
-export interface DomainPricesConfig {
+export interface DomainQuoteConfig {
   createPrices: Record<string, number>;
   // Optional alternative price tables by transaction type (USD). Falls back to `createPrices` when not provided.
   renewPrices?: Record<string, number>;
@@ -52,7 +52,7 @@ export interface DomainPricesConfig {
   // Single VAT rate applied across all countries/currencies.
   vatRate: number;
   discounts: Record<string, DiscountConfig>;
-  markup?: PriceMarkup;
+  markup?: Markup;
   // Uppercase ISO 4217 currency codes allowed. Defaults to ['USD', 'NGN'].
   supportedCurrencies?: string[];
 }

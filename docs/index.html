@@ -286,9 +286,9 @@
         mod = await import('https://cdn.jsdelivr.net/npm/domain-quotes@latest/dist/index.js');
       }
       const listSupportedCurrencies = (typeof mod.listSupportedCurrencies === 'function') ? mod.listSupportedCurrencies : (() => ['USD', 'GBP', 'EUR', 'NGN']);
-      const getDefaultQuote = mod.getDefaultQuote || mod.getDefaultPrice || mod.getPrice; // compat
-      const DomainPrices = mod.DomainPrices;
-      const DEFAULT_RATES = mod.DEFAULT_RATES;
+      const getDefaultQuote = mod.getDefaultQuote;
+      const DomainQuotes = mod.DomainQuotes;
+      const DEFAULT_CONFIG = mod.DEFAULT_CONFIG;
 
       // TLDs to generate from query (deduped)
       const TLDS = ["com", "org", "net", "ai", "info", "xyz", "site",];
@@ -356,8 +356,8 @@
 
       async function priceFor(domain, currency, codes, dp) {
         try {
-          if (dp && typeof dp.getPrice === 'function') {
-            const quote = await dp.getPrice(domain, currency, { discountCodes: codes });
+          if (dp && typeof dp.getQuote === 'function') {
+            const quote = await dp.getQuote(domain, currency, { discountCodes: codes });
             return formatCurrency(quote.currency, quote.totalPrice);
           }
           const fn = getDefaultQuote;
@@ -379,10 +379,10 @@
         // Build pricing provider (with markup when selected). Falls back to default function when unavailable.
         let dp = null;
         try {
-          if (DomainPrices && DEFAULT_RATES) {
+          if (DomainQuotes && DEFAULT_CONFIG) {
             const markup = getMarkupConfig();
-            const cfg = markup ? { ...DEFAULT_RATES, markup } : DEFAULT_RATES;
-            dp = new DomainPrices(cfg);
+            const cfg = markup ? { ...DEFAULT_CONFIG, markup } : DEFAULT_CONFIG;
+            dp = new DomainQuotes(cfg);
           }
         } catch { /* noop */ }
 
