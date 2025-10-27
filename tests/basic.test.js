@@ -23,8 +23,19 @@ test('supported extensions includes com and basic resolution works', () => {
   const list = listSupportedExtensions();
   assert.ok(list.includes('com'));
   assert.equal(isSupportedExtension('com'), true);
-  assert.equal(isSupportedExtension('example.com'), true);
+  assert.equal(isSupportedExtension('example.com'), false);
   assert.equal(isSupportedExtension('unknown-tld'), false);
+});
+
+test('normalization only lowercases and strips leading dots', () => {
+  // Leading dots are removed; case is ignored
+  assert.equal(isSupportedExtension('.com'), true);
+  assert.equal(isSupportedExtension('..COM'), true);
+  assert.equal(isSupportedExtension('Com'), true);
+
+  // Domains are not parsed; no longest-suffix matching
+  assert.equal(isSupportedExtension('example.com'), false);
+  assert.equal(isSupportedExtension('.example.com'), false);
 });
 
 test('isSupportedCurrency basic checks', () => {

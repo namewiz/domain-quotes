@@ -80,36 +80,18 @@ export function listSupportedExtensions(): string[] {
   return Object.keys(prices).sort();
 }
 
-export function isSupportedExtension(extOrDomain: string): boolean {
+export function isSupportedExtension(extension: string): boolean {
   const prices = loadPrices();
-  const ext = normalizeExtensionOrDomainUsing(prices, extOrDomain);
+  const ext = normalizeExtension(extension);
   const value = prices[ext];
   return typeof value === 'number' && value > 0;
 }
 
-function normalizeExtensionOrDomainUsing(prices: Record<string, number>, input: string): string {
-  if (!input) return input as string;
-  const lower = input.trim().toLowerCase();
-  const cleaned = lower.replace(/^\.+/, '');
-  if (!cleaned) return '';
-
-  if (prices.hasOwnProperty(cleaned)) {
-    // Exact extension provided (e.g. "com" or "com.ng")
-    return cleaned;
-  }
-
-  if (cleaned.includes('.')) {
-    const parts = cleaned.split('.');
-    // Find the longest matching suffix present in prices
-    for (let i = 0; i < parts.length; i++) {
-      const suffix = parts.slice(i).join('.');
-      if (prices.hasOwnProperty(suffix)) return suffix;
-    }
-    // Fallback to last label if nothing matches
-    return parts[parts.length - 1];
-  }
-
-  return cleaned;
+function normalizeExtension(extension: string): string {
+  if (!extension) return extension as string;
+  const lower = extension.trim().toLowerCase();
+  // Strip any leading dots only (e.g. ".com", "..com" -> "com").
+  return lower.replace(/^\.+/, '');
 }
 
 function asNowValue(now?: number | Date): number {
@@ -256,7 +238,7 @@ export class DomainPrices {
     const vatRates = this.config.vatRates;
     const discounts = this.config.discounts;
 
-    const ext = normalizeExtensionOrDomainUsing(createPrices, extension);
+    const ext = normalizeExtension(extension);
     const tx: TransactionType = options.transaction || 'create';
     // Select base USD using transaction-specific table when available; otherwise fallback to default `createPrices`.
     let baseUsd: number | undefined;
