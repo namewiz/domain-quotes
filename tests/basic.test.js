@@ -51,14 +51,15 @@ test('isSupportedCurrency basic checks', () => {
   assert.equal(isSupportedCurrency('JPY'), false);
 });
 
-test('getDefaultPrice computes USD price and no tax for US', async () => {
+test('getDefaultPrice computes USD price with default 7.5% VAT', async () => {
   const quote = await getDefaultPrice('com', 'USD');
   assert.equal(quote.extension, 'com');
   assert.equal(quote.currency, 'USD');
   assert.equal(typeof quote.basePrice, 'number');
   assert.equal(typeof quote.totalPrice, 'number');
-  // In the US dataset, tax is 0
-  assert.equal(quote.tax, 0);
+  // Default VAT applied is 7.5%
+  const expectedTax = Number(((quote.basePrice - quote.discount) * 0.075).toFixed(2));
+  assert.equal(quote.tax, expectedTax);
   assert.equal(quote.totalPrice, Number((quote.basePrice - quote.discount + quote.tax).toFixed(2)));
 });
 
@@ -69,21 +70,21 @@ test('getDefaultPrice applies tax by currency for NGN by default', async () => {
   assert.equal(ng.tax, expectedNgTax);
 });
 
-test('DomainPrices respects custom supportedCurrencies for GBP/EUR', async () => {
+test('DomainPrices supports GBP/EUR and applies single VAT rate', async () => {
   const dp = new DomainPrices({
     ...DEFAULT_RATES,
     supportedCurrencies: ['USD', 'NGN', 'GBP', 'EUR'],
   });
 
-  // GBP -> GB -> 20%
+  // Default VAT of 7.5% applies to GBP
   const gb = await dp.getPrice('com', 'GBP');
-  const expectedGbTax = Number(((gb.basePrice - gb.discount) * 0.2).toFixed(2));
-  assert.equal(gb.tax, expectedGbTax);
+  const expectedGbTax = Number(((gb.basePrice - gb.discount) * 0.075).toFixed(2));
+  assert.equal(gb.tax, expectedGbTax, 'GBP tax should be 7.5%');
 
-  // EUR -> DE -> 19%
+  // Default VAT of 7.5% applies to EUR
   const eu = await dp.getPrice('com', 'EUR');
-  const expectedEuTax = Number(((eu.basePrice - eu.discount) * 0.19).toFixed(2));
-  assert.equal(eu.tax, expectedEuTax);
+  const expectedEuTax = Number(((eu.basePrice - eu.discount) * 0.075).toFixed(2));
+  assert.equal(eu.tax, expectedEuTax, 'EUR tax should be 7.5%');
 });
 
 test('getDefaultPrice applies highest discount only by default', async () => {

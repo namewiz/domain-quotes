@@ -25,8 +25,6 @@ export interface ExchangeRateData {
   inverseRate: number;
 }
 
-export type VatRates = Record<string, number>;
-
 export interface DiscountConfig {
   rate: number;
   extensions: string[];
@@ -51,7 +49,8 @@ export interface DomainPricesConfig {
   restorePrices?: Record<string, number>;
   transferPrices?: Record<string, number>;
   exchangeRates: ExchangeRateData[];
-  vatRates: VatRates;
+  // Single VAT rate applied across all countries/currencies.
+  vatRate: number;
   discounts: Record<string, DiscountConfig>;
   markup?: PriceMarkup;
   // Uppercase ISO 4217 currency codes allowed. Defaults to ['USD', 'NGN'].

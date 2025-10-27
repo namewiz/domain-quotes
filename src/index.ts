@@ -1,5 +1,4 @@
 import discountsJson from './data/discount.json' assert { type: 'json' };
-import vatRatesJson from './data/vat-rates.json' assert { type: 'json' };
 import type {
   DiscountConfig,
   DomainPricesConfig,
@@ -7,13 +6,14 @@ import type {
   GetPriceOptions,
   PriceMarkup,
   PriceQuote,
-  TransactionType,
-  VatRates
+  TransactionType
 } from './types';
 export type {
   DiscountConfig,
-  DiscountPolicy, DomainPricesConfig, ExchangeRateData, GetPriceOptions, MarkupType, PriceMarkup, PriceQuote, TransactionType, VatRates
+  DiscountPolicy, DomainPricesConfig, ExchangeRateData, GetPriceOptions, MarkupType, PriceMarkup, PriceQuote, TransactionType
 } from './types';
+
+export const DEFAULT_VAT_RATE = 0.075;
 
 export function listSupportedCurrencies(): string[] {
   // Use the configured default when available; fall back to core set
@@ -107,10 +107,6 @@ function loadExchangeRates(): ExchangeRateData[] {
   return EXCHANGE_RATES;
 }
 
-function loadVatRates(): VatRates {
-  return vatRatesJson as VatRates;
-}
-
 function loadDiscounts(): Record<string, DiscountConfig> {
   return discountsJson as Record<string, DiscountConfig>;
 }
@@ -150,7 +146,7 @@ function findUsdRateInfo(): ExchangeRateData {
 }
 
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return Number(n.toFixed(2));
 }
 
 function applyMarkup(baseUsd: number, markup?: PriceMarkup): number {
@@ -187,7 +183,7 @@ export class DomainPrices {
     options: GetPriceOptions = {}
   ): Promise<PriceQuote> {
     const createPrices = this.config.createPrices;
-    const vatRates = this.config.vatRates;
+    const vatRate = typeof this.config.vatRate === 'number' ? this.config.vatRate : DEFAULT_VAT_RATE;
     const discounts = this.config.discounts;
 
     const ext = normalizeExtension(extension);
@@ -224,11 +220,7 @@ export class DomainPrices {
     const markedUsd = applyMarkup(baseUsd, this.config.markup);
     const basePrice = round2(markedUsd * rateInfo.exchangeRate);
 
-    const iso = rateInfo.countryCode;
-    const taxRate = vatRates[iso];
-    if (typeof taxRate !== 'number') {
-      throw new UnsupportedCurrencyError(currencyCode);
-    }
+    const taxRate = vatRate;
 
     const uniqueCodes = Array.from(new Set((options.discountCodes || []).map((c) => c.toUpperCase())));
     const nowMs = asNowValue(options.now);
@@ -276,7 +268,7 @@ export class DomainPrices {
 export const DEFAULT_CONFIG: DomainPricesConfig = {
   createPrices: loadPrices(),
   exchangeRates: loadExchangeRates(),
-  vatRates: loadVatRates(),
+  vatRate: DEFAULT_VAT_RATE,
   discounts: loadDiscounts(),
   supportedCurrencies: ['USD', 'NGN'],
 };

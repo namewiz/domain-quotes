@@ -121,7 +121,7 @@ interface DomainPricesConfig {
   restorePrices?: Record<string, number>;
   transferPrices?: Record<string, number>;
   exchangeRates: ExchangeRateData[];           // currency conversion data
-  vatRates: Record<string, number>;            // ISO country code → VAT rate
+  vatRate: number;                             // single VAT rate applied to subtotal
   discounts: Record<string, DiscountConfig>;   // discount code → config
   markup?: PriceMarkup;                        // optional markup applied before conversion
 }
@@ -135,7 +135,7 @@ Errors
 Notes
 
 - Rounding is to 2 decimal places at each step to keep totals predictable (`base`, `discount`, `tax`, `total`).
-- VAT mapping is intentionally narrow and explicit by currency → country: `USD → US (0)`, `GBP → GB (0.2)`, `EUR → DE (0.19)`, `NGN → NG (0.075)`.
+- A single VAT rate is applied to the subtotal by default (7.5% in the default config). Override `vatRate` in the config to change it.
 - Price and exchange-rate data are fetched from maintained remote sources at import time:
   - Prices: `https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/unified-create-prices.csv`
   - Exchange rates: `https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/exchange-rates.json`
