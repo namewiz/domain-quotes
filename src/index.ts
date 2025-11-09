@@ -5,12 +5,14 @@ import type {
   ExchangeRateData,
   GetQuoteOptions,
   Markup,
+  PriceEntry,
+  PriceTable,
   Quote,
   TransactionType
 } from './types';
 export type {
   DiscountConfig,
-  DiscountPolicy, DomainQuoteConfig, ExchangeRateData, GetQuoteOptions, Markup, MarkupType, Quote, TransactionType
+  DiscountPolicy, DomainQuoteConfig, ExchangeRateData, GetQuoteOptions, Markup, MarkupType, PriceEntry, PriceTable, Quote, TransactionType
 } from './types';
 
 export const DEFAULT_VAT_RATE = 0.075;
@@ -32,11 +34,32 @@ export function listSupportedExtensions(): string[] {
   return Object.keys(prices).sort();
 }
 
+function toPriceMap(entry: PriceEntry | undefined): Record<string, number> | undefined {
+  if (entry === undefined || entry === null) return undefined;
+  if (typeof entry === 'number') {
+    if (!Number.isFinite(entry) || entry <= 0) return undefined;
+    return { USD: entry };
+  }
+
+  const map: Record<string, number> = {};
+  for (const [code, value] of Object.entries(entry)) {
+    const upper = code?.toUpperCase();
+    if (!upper || !Number.isFinite(value) || value <= 0) continue;
+    const existing = map[upper];
+    map[upper] = existing === undefined ? value : Math.min(existing, value);
+  }
+  return Object.keys(map).length > 0 ? map : undefined;
+}
+
+function hasValidPrice(entry: PriceEntry | undefined): boolean {
+  return !!toPriceMap(entry);
+}
+
 export function isSupportedExtension(extension: string): boolean {
   const prices = loadPrices();
   const ext = normalizeExtension(extension);
   const value = prices[ext];
-  return typeof value === 'number' && value > 0;
+  return hasValidPrice(value);
 }
 
 function normalizeExtension(extension: string): string {
@@ -70,36 +93,59 @@ async function fetchJson<T = unknown>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-function parseUnifiedPricesCsv(csv: string): Record<string, number> {
-  // CSV columns: tld,provider,amount
+function parseUnifiedPricesCsv(csv: string): PriceTable {
+  // CSV columns: tld,provider,currency,amount
   const lines = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (lines.length === 0) return {};
   const header = lines.shift()!; // remove header
   // Accept header validation lightly (avoid strict coupling)
-  const result: Record<string, number> = {};
+  const result: PriceTable = {};
   for (const line of lines) {
     const parts = line.split(',');
-    if (parts.length < 3) continue;
+    if (parts.length < 4) continue;
     const tld = parts[0]?.trim().toLowerCase();
     // const provider = parts[1]?.trim().toLowerCase(); // not currently used
-    const amountStr = parts[2]?.trim();
+    const currency = parts[2]?.trim().toUpperCase();
+    const amountStr = parts[3]?.trim();
     const amount = Number(amountStr);
-    if (!tld || !Number.isFinite(amount) || amount <= 0) continue;
-    // Use the lowest amount across providers for each TLD
-    if (!(tld in result) || amount < result[tld]) {
-      result[tld] = amount;
+    if (!tld || !currency || !Number.isFinite(amount) || amount <= 0) continue;
+    const existing = result[tld];
+    let map: Record<string, number>;
+    if (existing === undefined) {
+      map = {};
+    } else if (typeof existing === 'number') {
+      map = { USD: existing };
+    } else {
+      map = existing;
     }
+    const previous = map[currency];
+    map[currency] = previous === undefined ? amount : Math.min(previous, amount);
+    result[tld] = map;
   }
   return result;
 }
 
-// Fetch remote datasets once at module load (Node ESM supports top-level await)
-const [CREATE_PRICES, EXCHANGE_RATES] = await Promise.all([
-  fetchText(UNIFIED_CREATE_PRICES_CSV).then(parseUnifiedPricesCsv),
-  fetchJson<ExchangeRateData[]>(EXCHANGE_RATES_JSON_URL),
-]);
+async function loadRemoteData(): Promise<[PriceTable, ExchangeRateData[]]> {
+  try {
+    const [prices, rates] = await Promise.all([
+      fetchText(UNIFIED_CREATE_PRICES_CSV).then(parseUnifiedPricesCsv),
+      fetchJson<ExchangeRateData[]>(EXCHANGE_RATES_JSON_URL),
+    ]);
+    return [prices, rates];
+  } catch (error) {
+    const err =
+      error instanceof Error
+        ? error
+        : new Error(typeof error === 'string' ? error : 'Unknown error');
+    err.message = `domain-quotes: failed to load remote pricing data: ${err.message}`;
+    throw err;
+  }
+}
 
-function loadPrices(): Record<string, number> {
+// Fetch remote datasets once at module load (Node ESM supports top-level await)
+const [CREATE_PRICES, EXCHANGE_RATES] = await loadRemoteData();
+
+function loadPrices(): PriceTable {
   return CREATE_PRICES;
 }
 
@@ -188,24 +234,35 @@ export class DomainQuotes {
 
     const ext = normalizeExtension(extension);
     const tx: TransactionType = options.transaction || 'create';
-    // Select base USD using transaction-specific table when available; otherwise fallback to default `createPrices`.
-    let baseUsd: number | undefined;
-    switch (tx) {
-      case 'renew':
-        baseUsd = this.config.renewPrices?.[ext] ?? createPrices[ext];
-        break;
-      case 'restore':
-        baseUsd = this.config.restorePrices?.[ext] ?? createPrices[ext];
-        break;
-      case 'transfer':
-        baseUsd = this.config.transferPrices?.[ext] ?? createPrices[ext];
-        break;
-      case 'create':
-      default:
-        baseUsd = createPrices[ext];
-        break;
+
+    const createMap = toPriceMap(createPrices[ext]);
+    if (!createMap) {
+      throw new UnsupportedExtensionError(ext);
     }
-    if (baseUsd === undefined || baseUsd === 0) {
+
+    let priceMap: Record<string, number> = { ...createMap };
+    const transactionTable: PriceTable | undefined = (() => {
+      switch (tx) {
+        case 'renew':
+          return this.config.renewPrices;
+        case 'restore':
+          return this.config.restorePrices;
+        case 'transfer':
+          return this.config.transferPrices;
+        case 'create':
+        default:
+          return undefined;
+      }
+    })();
+
+    if (transactionTable) {
+      const override = toPriceMap(transactionTable[ext]);
+      if (override) {
+        priceMap = { ...priceMap, ...override };
+      }
+    }
+
+    if (Object.keys(priceMap).length === 0) {
       throw new UnsupportedExtensionError(ext);
     }
 
@@ -217,8 +274,26 @@ export class DomainQuotes {
 
     const rateInfo = this.findRateInfo(currency);
     const symbol = rateInfo.currencySymbol;
+    let baseUsd = priceMap.USD;
+    if (baseUsd === undefined) {
+      baseUsd = createMap.USD;
+    }
+    const directCurrencyPrice = priceMap[currency];
+    if (baseUsd === undefined && directCurrencyPrice !== undefined) {
+      baseUsd = directCurrencyPrice / rateInfo.exchangeRate;
+    }
+    if (baseUsd === undefined || baseUsd <= 0) {
+      throw new UnsupportedExtensionError(ext);
+    }
     const markedUsd = applyMarkup(baseUsd, this.config.markup);
-    const basePrice = round2(markedUsd * rateInfo.exchangeRate);
+
+    let basePrice: number;
+    if (directCurrencyPrice !== undefined && baseUsd > 0) {
+      const impliedRate = directCurrencyPrice / baseUsd;
+      basePrice = round2(markedUsd * impliedRate);
+    } else {
+      basePrice = round2(markedUsd * rateInfo.exchangeRate);
+    }
 
     const taxRate = vatRate;
 

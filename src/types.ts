@@ -42,12 +42,15 @@ export interface GetQuoteOptions {
   transaction?: TransactionType; // default: 'create'
 }
 
+export type PriceEntry = number | Record<string, number>;
+export type PriceTable = Record<string, PriceEntry>;
+
 export interface DomainQuoteConfig {
-  createPrices: Record<string, number>;
-  // Optional alternative price tables by transaction type (USD). Falls back to `createPrices` when not provided.
-  renewPrices?: Record<string, number>;
-  restorePrices?: Record<string, number>;
-  transferPrices?: Record<string, number>;
+  createPrices: PriceTable;
+  // Optional alternative price tables by transaction type (USD/default currency). Falls back to `createPrices` when not provided.
+  renewPrices?: PriceTable;
+  restorePrices?: PriceTable;
+  transferPrices?: PriceTable;
   exchangeRates: ExchangeRateData[];
   // Single VAT rate applied across all countries/currencies.
   vatRate: number;

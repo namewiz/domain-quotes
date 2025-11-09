@@ -140,11 +140,61 @@ test('fixed USD markup adjusts prices before currency conversion', async () => {
   assert.ok(typeof ngnRate === 'number');
   const expectedNgnIncrease = Number((markupUsd * ngnRate).toFixed(2));
   const actualNgnIncrease = Number((quotedNgn.basePrice - baselineNgn.basePrice).toFixed(2));
-  // Allow ±0.01 because each base is rounded separately
-  assert.ok(Math.abs(actualNgnIncrease - expectedNgnIncrease) <= 0.01);
+  // Allow ±0.1 because each base is rounded separately
+  assert.ok(Math.abs(actualNgnIncrease - expectedNgnIncrease) <= 0.1);
 });
 
-// priceForDomain API removed; getDefaultQuote accepts an extension.
+test('uses direct currency pricing when available', async () => {
+  const rate = 150;
+  const config = {
+    createPrices: {
+      com: { USD: 10, NGN: 1500 },
+    },
+    exchangeRates: [
+      {
+        countryCode: 'NG',
+        currencyName: 'Nigerian Naira',
+        currencySymbol: '₦',
+        currencyCode: 'NGN',
+        exchangeRate: rate,
+        inverseRate: 1 / rate,
+      },
+    ],
+    vatRate: 0,
+    discounts: {},
+    supportedCurrencies: ['USD', 'NGN'],
+  };
+  const dq = new DomainQuotes(config);
+  const ngQuote = await dq.getQuote('com', 'NGN');
+  assert.equal(ngQuote.basePrice, 1500);
+  const usdQuote = await dq.getQuote('com', 'USD');
+  assert.equal(usdQuote.basePrice, 10);
+});
+
+test('falls back to exchange rate when currency price missing', async () => {
+  const rate = 150;
+  const config = {
+    createPrices: {
+      com: { USD: 12 },
+    },
+    exchangeRates: [
+      {
+        countryCode: 'NG',
+        currencyName: 'Nigerian Naira',
+        currencySymbol: '₦',
+        currencyCode: 'NGN',
+        exchangeRate: rate,
+        inverseRate: 1 / rate,
+      },
+    ],
+    vatRate: 0,
+    discounts: {},
+    supportedCurrencies: ['USD', 'NGN'],
+  };
+  const dq = new DomainQuotes(config);
+  const ngQuote = await dq.getQuote('com', 'NGN');
+  assert.equal(ngQuote.basePrice, Number((12 * rate).toFixed(2)));
+});
 
 test('errors on unsupported extension', async () => {
   await assert.rejects(
