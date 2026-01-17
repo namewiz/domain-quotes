@@ -326,7 +326,7 @@ export class DomainQuotes {
     const tax = round2(subtotal * taxRate);
     const totalPrice = round2(subtotal + tax);
 
-    return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol, transaction: tx };
+    return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol, domainTransaction: tx };
   }
 }
 

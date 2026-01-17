@@ -6,7 +6,7 @@ export interface Quote {
   tax: number;
   totalPrice: number;
   symbol: string;
-  transaction: TransactionType;
+  domainTransaction: TransactionType;
 }
 
 export type MarkupType = 'percentage' | 'fixedUsd';
