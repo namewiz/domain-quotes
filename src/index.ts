@@ -1,4 +1,3 @@
-import discountsJson from './data/discount.json' assert { type: 'json' };
 import type {
   DiscountConfig,
   DomainQuoteConfig,
@@ -12,7 +11,18 @@ import type {
 } from './types';
 export type {
   DiscountConfig,
-  DiscountPolicy, DomainQuoteConfig, ExchangeRateData, GetQuoteOptions, Markup, MarkupType, PriceEntry, PriceTable, Quote, TransactionType
+  DiscountEligibilityCallback,
+  DiscountEligibilityContext,
+  DiscountPolicy,
+  DomainQuoteConfig,
+  ExchangeRateData,
+  GetQuoteOptions,
+  Markup,
+  MarkupType,
+  PriceEntry,
+  PriceTable,
+  Quote,
+  TransactionType
 } from './types';
 
 export const DEFAULT_VAT_RATE = 0.075;
@@ -62,7 +72,7 @@ export function isSupportedExtension(extension: string): boolean {
   return hasValidPrice(value);
 }
 
-function normalizeExtension(extension: string): string {
+export function normalizeExtension(extension: string): string {
   if (!extension) return extension as string;
   const lower = extension.trim().toLowerCase();
   // Strip any leading dots only (e.g. ".com", "..com" -> "com").
@@ -78,6 +88,10 @@ function asNowValue(now?: number | Date): number {
 // Remote data sources
 const UNIFIED_CREATE_PRICES_CSV =
   'https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/unified-create-prices.csv';
+const UNIFIED_RENEW_PRICES_CSV =
+  'https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/unified-renew-prices.csv';
+const UNIFIED_TRANSFER_PRICES_CSV =
+  'https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/unified-transfer-prices.csv';
 const EXCHANGE_RATES_JSON_URL =
   'https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/exchange-rates.json';
 
@@ -125,13 +139,15 @@ function parseUnifiedPricesCsv(csv: string): PriceTable {
   return result;
 }
 
-async function loadRemoteData(): Promise<[PriceTable, ExchangeRateData[]]> {
+async function loadRemoteData(): Promise<[PriceTable, PriceTable, PriceTable, ExchangeRateData[]]> {
   try {
-    const [prices, rates] = await Promise.all([
+    const [createPrices, renewPrices, transferPrices, rates] = await Promise.all([
       fetchText(UNIFIED_CREATE_PRICES_CSV).then(parseUnifiedPricesCsv),
+      fetchText(UNIFIED_RENEW_PRICES_CSV).then(parseUnifiedPricesCsv),
+      fetchText(UNIFIED_TRANSFER_PRICES_CSV).then(parseUnifiedPricesCsv),
       fetchJson<ExchangeRateData[]>(EXCHANGE_RATES_JSON_URL),
     ]);
-    return [prices, rates];
+    return [createPrices, renewPrices, transferPrices, rates];
   } catch (error) {
     const err =
       error instanceof Error
@@ -143,18 +159,22 @@ async function loadRemoteData(): Promise<[PriceTable, ExchangeRateData[]]> {
 }
 
 // Fetch remote datasets once at module load (Node ESM supports top-level await)
-const [CREATE_PRICES, EXCHANGE_RATES] = await loadRemoteData();
+const [CREATE_PRICES, RENEW_PRICES, TRANSFER_PRICES, EXCHANGE_RATES] = await loadRemoteData();
 
 function loadPrices(): PriceTable {
   return CREATE_PRICES;
 }
 
-function loadExchangeRates(): ExchangeRateData[] {
-  return EXCHANGE_RATES;
+function loadRenewPrices(): PriceTable {
+  return RENEW_PRICES;
 }
 
-function loadDiscounts(): Record<string, DiscountConfig> {
-  return discountsJson as Record<string, DiscountConfig>;
+function loadTransferPrices(): PriceTable {
+  return TRANSFER_PRICES;
+}
+
+function loadExchangeRates(): ExchangeRateData[] {
+  return EXCHANGE_RATES;
 }
 
 class DomainQuoteError extends Error {
@@ -307,7 +327,21 @@ export class DomainQuotes {
       const end = Date.parse(conf.endAt);
       if (Number.isNaN(start) || Number.isNaN(end)) continue;
       if (nowMs < start || nowMs > end) continue;
-      if (!conf.extensions.includes(ext)) continue;
+      const normalizedExtensions = conf.extensions.map(normalizeExtension);
+      if (!normalizedExtensions.includes(ext)) continue;
+      // Check transaction type if specified
+      if (conf.transactions && conf.transactions.length > 0 && !conf.transactions.includes(tx)) continue;
+      // Check custom eligibility callback if provided (called only after all other criteria pass)
+      if (conf.isEligible) {
+        try {
+          const context = { extension: ext, currency, transaction: tx, basePrice, discountCode: code };
+          const eligible = await Promise.resolve(conf.isEligible(context));
+          if (!eligible) continue;
+        } catch {
+          // If callback throws, skip this discount
+          continue;
+        }
+      }
       applicable.push(round2(basePrice * conf.rate));
     }
 
@@ -333,9 +367,11 @@ export class DomainQuotes {
 // Build default config snapshot from the bundled JSON data.
 export const DEFAULT_CONFIG: DomainQuoteConfig = {
   createPrices: loadPrices(),
+  renewPrices: loadRenewPrices(),
+  transferPrices: loadTransferPrices(),
   exchangeRates: loadExchangeRates(),
   vatRate: DEFAULT_VAT_RATE,
-  discounts: loadDiscounts(),
+  discounts: {},
   supportedCurrencies: ['USD', 'NGN'],
 };
 

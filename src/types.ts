@@ -25,11 +25,32 @@ export interface ExchangeRateData {
   inverseRate: number;
 }
 
+/** Context passed to discount eligibility callbacks */
+export interface DiscountEligibilityContext {
+  /** The normalized extension (e.g., 'com', 'ng') */
+  extension: string;
+  /** The currency code (e.g., 'USD', 'NGN') */
+  currency: string;
+  /** The transaction type */
+  transaction: TransactionType;
+  /** The base price before discount */
+  basePrice: number;
+  /** The discount code being evaluated */
+  discountCode: string;
+}
+
+/** Callback function to determine custom discount eligibility. Return true if eligible, false otherwise. */
+export type DiscountEligibilityCallback = (context: DiscountEligibilityContext) => boolean | Promise<boolean>;
+
 export interface DiscountConfig {
   rate: number;
   extensions: string[];
   startAt: string;
   endAt: string;
+  /** Optional list of transaction types this discount applies to. If omitted, applies to all transaction types. */
+  transactions?: TransactionType[];
+  /** Optional callback for custom eligibility logic. Invoked only after all other criteria are satisfied. */
+  isEligible?: DiscountEligibilityCallback;
 }
 
 export type DiscountPolicy = 'stack' | 'max';
