@@ -61,6 +61,8 @@ export interface GetQuoteOptions {
   now?: number | Date;
   discountPolicy?: DiscountPolicy;
   transaction?: TransactionType; // default: 'create'
+  /** When true, amounts retain 2 decimal places (cents/kobos). When false (default), amounts are rounded to nearest integer. */
+  allowFractionalAmounts?: boolean;
 }
 
 export type PriceEntry = number | Record<string, number>;

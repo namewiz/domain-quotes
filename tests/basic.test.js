@@ -52,7 +52,7 @@ test('isSupportedCurrency basic checks', () => {
 });
 
 test('getDefaultQuote computes USD price with default 7.5% VAT', async () => {
-  const quote = await getDefaultQuote('com', 'USD');
+  const quote = await getDefaultQuote('com', 'USD', { allowFractionalAmounts: true });
   assert.equal(quote.extension, 'com');
   assert.equal(quote.currency, 'USD');
   assert.equal(typeof quote.basePrice, 'number');
@@ -65,7 +65,7 @@ test('getDefaultQuote computes USD price with default 7.5% VAT', async () => {
 
 test('getDefaultQuote applies tax by currency for NGN by default', async () => {
   // NGN -> NG -> 7.5%
-  const ng = await getDefaultQuote('com', 'NGN');
+  const ng = await getDefaultQuote('com', 'NGN', { allowFractionalAmounts: true });
   const expectedNgTax = Number(((ng.basePrice - ng.discount) * 0.075).toFixed(2));
   assert.equal(ng.tax, expectedNgTax);
 });
@@ -77,12 +77,12 @@ test('DomainQuotes supports GBP/EUR and applies single VAT rate', async () => {
   });
 
   // Default VAT of 7.5% applies to GBP
-  const gb = await dp.getQuote('com', 'GBP');
+  const gb = await dp.getQuote('com', 'GBP', { allowFractionalAmounts: true });
   const expectedGbTax = Number(((gb.basePrice - gb.discount) * 0.075).toFixed(2));
   assert.equal(gb.tax, expectedGbTax, 'GBP tax should be 7.5%');
 
   // Default VAT of 7.5% applies to EUR
-  const eu = await dp.getQuote('com', 'EUR');
+  const eu = await dp.getQuote('com', 'EUR', { allowFractionalAmounts: true });
   const expectedEuTax = Number(((eu.basePrice - eu.discount) * 0.075).toFixed(2));
   assert.equal(eu.tax, expectedEuTax, 'EUR tax should be 7.5%');
 });
@@ -106,8 +106,8 @@ test('getDefaultQuote applies highest discount only by default', async () => {
       },
     },
   });
-  const noDisc = await dp.getQuote('com', 'USD');
-  const withDisc = await dp.getQuote('com', 'USD', { discountCodes: ['save1', 'NEWUSER15', 'invalid'] });
+  const noDisc = await dp.getQuote('com', 'USD', { allowFractionalAmounts: true });
+  const withDisc = await dp.getQuote('com', 'USD', { discountCodes: ['save1', 'NEWUSER15', 'invalid'], allowFractionalAmounts: true });
   // Highest discount is NEWUSER15 at 15%
   assert.equal(withDisc.discount, Number((noDisc.basePrice * 0.15).toFixed(2)));
   assert.equal(withDisc.totalPrice, Number((withDisc.basePrice - withDisc.discount + withDisc.tax).toFixed(2)));
@@ -143,13 +143,13 @@ test('percentage markup increases base price before discounting', async () => {
     ...DEFAULT_CONFIG,
     discounts,
   });
-  const baseline = await baselineDp.getQuote('com', 'USD', { discountCodes: ['SAVE1'] });
+  const baseline = await baselineDp.getQuote('com', 'USD', { discountCodes: ['SAVE1'], allowFractionalAmounts: true });
   const dp = new DomainQuotes({
     ...DEFAULT_CONFIG,
     markup: { type: 'percentage', value: 0.25 },
     discounts,
   });
-  const quote = await dp.getQuote('com', 'USD', { discountCodes: ['SAVE1'] });
+  const quote = await dp.getQuote('com', 'USD', { discountCodes: ['SAVE1'], allowFractionalAmounts: true });
   const expected = Number((baseline.basePrice * 1.25).toFixed(2));
   assert.equal(quote.basePrice, expected);
   assert.equal(quote.discount, Number((expected * 0.01).toFixed(2))); // SAVE1 applies
@@ -280,4 +280,71 @@ test('renewPrices override is used when provided in config', async () => {
   });
   const renew = await dp.getQuote('com', 'USD', { transaction: 'renew' });
   assert.equal(renew.basePrice, customRenewUsd);
+});
+
+test('allowFractionalAmounts=false rounds amounts to nearest integer', async () => {
+  const dp = new DomainQuotes({
+    createPrices: { com: 10.5 },
+    exchangeRates: [],
+    vatRate: 0.075, // 7.5% VAT
+    discounts: {
+      SAVE15: {
+        rate: 0.15,
+        extensions: ['com'],
+        startAt: '2023-01-01T00:00:00Z',
+        endAt: '2030-12-31T23:59:59Z',
+      },
+    },
+    supportedCurrencies: ['USD'],
+  });
+
+  // With allowFractionalAmounts: false (default), amounts should be rounded
+  const quote = await dp.getQuote('com', 'USD', {
+    discountCodes: ['SAVE15'],
+    allowFractionalAmounts: false,
+  });
+
+  // basePrice: 10.5 -> rounds to 11
+  assert.equal(quote.basePrice, 11);
+  // discount: 11 * 0.15 = 1.65 -> rounds to 2
+  assert.equal(quote.discount, 2);
+  // subtotal: 11 - 2 = 9
+  // tax: 9 * 0.075 = 0.675 -> rounds to 1
+  assert.equal(quote.tax, 1);
+  // totalPrice: 9 + 1 = 10
+  assert.equal(quote.totalPrice, 10);
+
+  // Verify all amounts are integers
+  assert.equal(Number.isInteger(quote.basePrice), true);
+  assert.equal(Number.isInteger(quote.discount), true);
+  assert.equal(Number.isInteger(quote.tax), true);
+  assert.equal(Number.isInteger(quote.totalPrice), true);
+});
+
+test('allowFractionalAmounts defaults to false', async () => {
+  const dp = new DomainQuotes({
+    createPrices: { com: 10 },
+    exchangeRates: [],
+    vatRate: 0.1, // 10% VAT
+    discounts: {
+      SAVE5: {
+        rate: 0.05,
+        extensions: ['com'],
+        startAt: '2023-01-01T00:00:00Z',
+        endAt: '2030-12-31T23:59:59Z',
+      },
+    },
+    supportedCurrencies: ['USD'],
+  });
+
+  // Without specifying allowFractionalAmounts, it should default to false
+  const quote = await dp.getQuote('com', 'USD', { discountCodes: ['SAVE5'] });
+
+  // discount: 10 * 0.05 = 0.5 -> rounds to 1 (not 0.5)
+  assert.equal(quote.discount, 1);
+  // subtotal: 10 - 1 = 9
+  // tax: 9 * 0.1 = 0.9 -> rounds to 1
+  assert.equal(quote.tax, 1);
+  // totalPrice: 9 + 1 = 10
+  assert.equal(quote.totalPrice, 10);
 });

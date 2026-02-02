@@ -192,6 +192,7 @@ test('discount: default policy applies highest discount only', async () => {
   const quote = await dq.getQuote('com', 'USD', {
     discountCodes: ['SMALL', 'MEDIUM', 'LARGE'],
     now: JUN_2024,
+    allowFractionalAmounts: true,
   });
   // basePrice = 10, highest discount = 25% = 2.5
   assert.equal(quote.discount, 2.5);
@@ -217,6 +218,7 @@ test('discount: stack policy sums all applicable discounts', async () => {
     discountCodes: ['SMALL', 'MEDIUM'],
     discountPolicy: 'stack',
     now: JUN_2024,
+    allowFractionalAmounts: true,
   });
   // basePrice = 10, total discount = 5% + 15% = 0.5 + 1.5 = 2
   assert.equal(quote.discount, 2);
@@ -389,7 +391,7 @@ test('discount: tax is calculated on subtotal (basePrice - discount)', async () 
     },
   });
   const dq = new DomainQuotes(config);
-  const quote = await dq.getQuote('com', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024 });
+  const quote = await dq.getQuote('com', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024, allowFractionalAmounts: true });
   // basePrice = 10, discount = 1, subtotal = 9
   // tax = 9 * 0.1 = 0.9
   assert.equal(quote.basePrice, 10);
@@ -407,7 +409,7 @@ test('discount: totalPrice = subtotal + tax', async () => {
     },
   });
   const dq = new DomainQuotes(config);
-  const quote = await dq.getQuote('com', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024 });
+  const quote = await dq.getQuote('com', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024, allowFractionalAmounts: true });
   // basePrice = 10, discount = 1, subtotal = 9, tax = 0.9, total = 9.9
   assert.equal(quote.totalPrice, 9.9);
 });
@@ -423,10 +425,10 @@ test('discount: multiple extensions in config work correctly', async () => {
   });
   const dq = new DomainQuotes(config);
 
-  const comQuote = await dq.getQuote('com', 'USD', { discountCodes: ['MULTI'], now: JUN_2024 });
-  const netQuote = await dq.getQuote('net', 'USD', { discountCodes: ['MULTI'], now: JUN_2024 });
-  const orgQuote = await dq.getQuote('org', 'USD', { discountCodes: ['MULTI'], now: JUN_2024 });
-  const infoQuote = await dq.getQuote('info', 'USD', { discountCodes: ['MULTI'], now: JUN_2024 });
+  const comQuote = await dq.getQuote('com', 'USD', { discountCodes: ['MULTI'], now: JUN_2024, allowFractionalAmounts: true });
+  const netQuote = await dq.getQuote('net', 'USD', { discountCodes: ['MULTI'], now: JUN_2024, allowFractionalAmounts: true });
+  const orgQuote = await dq.getQuote('org', 'USD', { discountCodes: ['MULTI'], now: JUN_2024, allowFractionalAmounts: true });
+  const infoQuote = await dq.getQuote('info', 'USD', { discountCodes: ['MULTI'], now: JUN_2024, allowFractionalAmounts: true });
 
   // com: 10 * 0.2 = 2
   assert.equal(comQuote.discount, 2);
@@ -514,6 +516,7 @@ test('discount: stack policy with some valid and some invalid codes', async () =
     discountCodes: ['VALID1', 'VALID2', 'EXPIRED'],
     discountPolicy: 'stack',
     now: JUN_2024,
+    allowFractionalAmounts: true,
   });
   // Only VALID1 (0.5) and VALID2 (1) apply = 1.5
   assert.equal(quote.discount, 1.5);
@@ -602,8 +605,8 @@ test('discount: extension with leading dot in config works', async () => {
   });
   const dq = new DomainQuotes(config);
 
-  const comQuote = await dq.getQuote('com', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024 });
-  const netQuote = await dq.getQuote('net', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024 });
+  const comQuote = await dq.getQuote('com', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024, allowFractionalAmounts: true });
+  const netQuote = await dq.getQuote('net', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024, allowFractionalAmounts: true });
 
   assert.equal(comQuote.discount, 1); // 10% of 10
   assert.equal(netQuote.discount, 1.2); // 10% of 12
@@ -621,10 +624,10 @@ test('discount: mixed dot formats in config and request work', async () => {
   const dq = new DomainQuotes(config);
 
   // Request with dots
-  const quote1 = await dq.getQuote('.com', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024 });
-  const quote2 = await dq.getQuote('..net', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024 });
+  const quote1 = await dq.getQuote('.com', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024, allowFractionalAmounts: true });
+  const quote2 = await dq.getQuote('..net', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024, allowFractionalAmounts: true });
   // Request without dots
-  const quote3 = await dq.getQuote('org', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024 });
+  const quote3 = await dq.getQuote('org', 'USD', { discountCodes: ['SAVE10'], now: JUN_2024, allowFractionalAmounts: true });
 
   assert.equal(quote1.discount, 1);
   assert.equal(quote2.discount, 1.2);
@@ -755,21 +758,25 @@ test('discount: with multiple transaction types applies to specified types only'
     discountCodes: ['RENEWTRANSFER'],
     now: JUN_2024,
     transaction: 'create',
+    allowFractionalAmounts: true,
   });
   const renewQuote = await dq.getQuote('com', 'USD', {
     discountCodes: ['RENEWTRANSFER'],
     now: JUN_2024,
     transaction: 'renew',
+    allowFractionalAmounts: true,
   });
   const restoreQuote = await dq.getQuote('com', 'USD', {
     discountCodes: ['RENEWTRANSFER'],
     now: JUN_2024,
     transaction: 'restore',
+    allowFractionalAmounts: true,
   });
   const transferQuote = await dq.getQuote('com', 'USD', {
     discountCodes: ['RENEWTRANSFER'],
     now: JUN_2024,
     transaction: 'transfer',
+    allowFractionalAmounts: true,
   });
 
   assert.equal(createQuote.discount, 0);
@@ -809,18 +816,21 @@ test('discount: multiple codes with different transaction restrictions', async (
     discountCodes: ['CREATEONLY', 'RENEWONLY', 'ALLTYPES'],
     now: JUN_2024,
     transaction: 'create',
+    allowFractionalAmounts: true,
   });
   // Renew: RENEWONLY (20%) and ALLTYPES (5%) apply, max policy takes 20%
   const renewQuote = await dq.getQuote('com', 'USD', {
     discountCodes: ['CREATEONLY', 'RENEWONLY', 'ALLTYPES'],
     now: JUN_2024,
     transaction: 'renew',
+    allowFractionalAmounts: true,
   });
   // Restore: only ALLTYPES (5%) applies
   const restoreQuote = await dq.getQuote('com', 'USD', {
     discountCodes: ['CREATEONLY', 'RENEWONLY', 'ALLTYPES'],
     now: JUN_2024,
     transaction: 'restore',
+    allowFractionalAmounts: true,
   });
 
   assert.equal(createQuote.discount, 1); // max(10%, 5%) = 10% of 10
@@ -852,6 +862,7 @@ test('discount: stack policy with transaction-restricted codes', async () => {
     discountPolicy: 'stack',
     now: JUN_2024,
     transaction: 'create',
+    allowFractionalAmounts: true,
   });
   // Renew with stack: only ALLTYPES applies = 5%
   const renewQuote = await dq.getQuote('com', 'USD', {
@@ -859,6 +870,7 @@ test('discount: stack policy with transaction-restricted codes', async () => {
     discountPolicy: 'stack',
     now: JUN_2024,
     transaction: 'renew',
+    allowFractionalAmounts: true,
   });
 
   assert.equal(createQuote.discount, 1.5); // 10% + 5% of 10
@@ -1124,6 +1136,7 @@ test('discount: multiple codes with mixed callbacks', async () => {
   const quote = await dq.getQuote('com', 'USD', {
     discountCodes: ['ELIGIBLE', 'NOTELIGIBLE', 'NOCALLBACK'],
     now: JUN_2024,
+    allowFractionalAmounts: true,
   });
   assert.equal(quote.discount, 1.5); // 15% of 10
 });
@@ -1158,6 +1171,7 @@ test('discount: stack policy with callbacks', async () => {
     discountCodes: ['ELIGIBLE1', 'ELIGIBLE2', 'NOTELIGIBLE'],
     discountPolicy: 'stack',
     now: JUN_2024,
+    allowFractionalAmounts: true,
   });
   // Only ELIGIBLE1 (10%) and ELIGIBLE2 (5%) apply = 15%
   assert.equal(quote.discount, 1.5);
@@ -1177,14 +1191,14 @@ test('discount: callback can use context for conditional logic', async () => {
   const dq = new DomainQuotes(config);
 
   // com costs 10, should NOT be eligible
-  const comQuote = await dq.getQuote('com', 'USD', { discountCodes: ['BIGSPENDER'], now: JUN_2024 });
+  const comQuote = await dq.getQuote('com', 'USD', { discountCodes: ['BIGSPENDER'], now: JUN_2024, allowFractionalAmounts: true });
   assert.equal(comQuote.discount, 0);
 
   // net costs 12, should be eligible
-  const netQuote = await dq.getQuote('net', 'USD', { discountCodes: ['BIGSPENDER'], now: JUN_2024 });
+  const netQuote = await dq.getQuote('net', 'USD', { discountCodes: ['BIGSPENDER'], now: JUN_2024, allowFractionalAmounts: true });
   assert.equal(netQuote.discount, 2.4); // 20% of 12
 
   // org costs 15, should be eligible
-  const orgQuote = await dq.getQuote('org', 'USD', { discountCodes: ['BIGSPENDER'], now: JUN_2024 });
+  const orgQuote = await dq.getQuote('org', 'USD', { discountCodes: ['BIGSPENDER'], now: JUN_2024, allowFractionalAmounts: true });
   assert.equal(orgQuote.discount, 3); // 20% of 15
 });

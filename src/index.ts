@@ -215,6 +215,10 @@ function round2(n: number): number {
   return Number(n.toFixed(2));
 }
 
+function roundAmount(n: number, allowFractional: boolean): number {
+  return allowFractional ? round2(n) : Math.round(n);
+}
+
 function applyMarkup(baseUsd: number, markup?: Markup): number {
   if (!markup) return baseUsd;
   const value = typeof markup.value === 'number' ? markup.value : 0;
@@ -254,6 +258,7 @@ export class DomainQuotes {
 
     const ext = normalizeExtension(extension);
     const tx: TransactionType = options.transaction || 'create';
+    const allowFractional = options.allowFractionalAmounts ?? false;
 
     const createMap = toPriceMap(createPrices[ext]);
     if (!createMap) {
@@ -310,9 +315,9 @@ export class DomainQuotes {
     let basePrice: number;
     if (directCurrencyPrice !== undefined && baseUsd > 0) {
       const impliedRate = directCurrencyPrice / baseUsd;
-      basePrice = round2(markedUsd * impliedRate);
+      basePrice = roundAmount(markedUsd * impliedRate, allowFractional);
     } else {
-      basePrice = round2(markedUsd * rateInfo.exchangeRate);
+      basePrice = roundAmount(markedUsd * rateInfo.exchangeRate, allowFractional);
     }
 
     const taxRate = vatRate;
@@ -342,13 +347,13 @@ export class DomainQuotes {
           continue;
         }
       }
-      applicable.push(round2(basePrice * conf.rate));
+      applicable.push(roundAmount(basePrice * conf.rate, allowFractional));
     }
 
     let discount = 0;
     if (applicable.length > 0) {
       if (options.discountPolicy === 'stack') {
-        discount = round2(applicable.reduce((a, b) => a + b, 0));
+        discount = roundAmount(applicable.reduce((a, b) => a + b, 0), allowFractional);
       } else {
         // default: apply only the highest discount
         discount = Math.max(...applicable);
@@ -356,9 +361,9 @@ export class DomainQuotes {
     }
     if (discount > basePrice) discount = basePrice;
 
-    const subtotal = round2(basePrice - discount);
-    const tax = round2(subtotal * taxRate);
-    const totalPrice = round2(subtotal + tax);
+    const subtotal = roundAmount(basePrice - discount, allowFractional);
+    const tax = roundAmount(subtotal * taxRate, allowFractional);
+    const totalPrice = roundAmount(subtotal + tax, allowFractional);
 
     return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol, domainTransaction: tx };
   }
