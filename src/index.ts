@@ -95,15 +95,60 @@ const UNIFIED_TRANSFER_PRICES_CSV =
 const EXCHANGE_RATES_JSON_URL =
   'https://raw.githubusercontent.com/namewiz/registrar-pricelist/refs/heads/main/data/exchange-rates.json';
 
+async function fetchWithDiagnostics(url: string): Promise<Response> {
+  try {
+    return await fetch(url);
+  } catch (error) {
+    throw new Error(describeNetworkError(url, error), { cause: error });
+  }
+}
+
+function describeNetworkError(url: string, error: unknown): string {
+  const cause = error instanceof Error ? (error.cause as { code?: string } | undefined) : undefined;
+  const code = cause?.code;
+  let reason: string;
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    reason = 'DNS resolution failed (likely no network connectivity or an invalid hostname)';
+  } else if (code === 'ECONNREFUSED') {
+    reason = 'connection refused by the remote host';
+  } else if (code === 'ECONNRESET') {
+    reason = 'connection was reset while fetching';
+  } else if (code === 'ETIMEDOUT' || (error instanceof Error && error.name === 'TimeoutError')) {
+    reason = 'request timed out';
+  } else if (error instanceof Error && error.name === 'AbortError') {
+    reason = 'request was aborted';
+  } else {
+    reason = 'network request failed (no network connection or the host is unreachable)';
+  }
+  const detail = code ? ` [${code}]` : '';
+  return `Network error fetching ${url}: ${reason}${detail}`;
+}
+
+function describeHttpError(url: string, res: Response): string {
+  let reason: string;
+  if (res.status === 404) {
+    reason = 'resource not found';
+  } else if (res.status === 429) {
+    reason = 'rate limited by the remote host';
+  } else if (res.status === 401 || res.status === 403) {
+    reason = 'access denied (unauthorized/forbidden)';
+  } else if (res.status >= 500) {
+    reason = 'remote server error';
+  } else {
+    reason = 'unexpected response status';
+  }
+  return `Failed to fetch ${url}: ${res.status} ${res.statusText} (${reason})`;
+}
+
 async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+  const res = await fetchWithDiagnostics(url);
+  if (!res.ok) throw new Error(describeHttpError(url, res));
   return res.text();
 }
 
 async function fetchJson<T = unknown>(url: string): Promise<T> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+  const res = await fetchWithDiagnostics(url);
+  if (!res.ok) throw new Error(describeHttpError(url, res));
   return res.json() as Promise<T>;
 }
 
@@ -152,7 +197,7 @@ async function loadRemoteData(): Promise<[PriceTable, PriceTable, PriceTable, Ex
     const err =
       error instanceof Error
         ? error
-        : new Error(typeof error === 'string' ? error : 'Unknown error');
+        : new Error(typeof error === 'string' ? error : 'Unknown error', { cause: error });
     err.message = `domain-quotes: failed to load remote pricing data: ${err.message}`;
     throw err;
   }
