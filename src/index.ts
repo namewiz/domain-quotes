@@ -152,18 +152,26 @@ async function fetchJson<T = unknown>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-function parseUnifiedPricesCsv(csv: string): PriceTable {
+interface ParsedUnifiedPrices {
+  prices: PriceTable;
+  // tld -> provider that owns the winning (minimum USD) price row.
+  providers: Record<string, string>;
+}
+
+function parseUnifiedPricesCsv(csv: string): ParsedUnifiedPrices {
   // CSV columns: tld,provider,currency,amount
   const lines = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length === 0) return {};
+  if (lines.length === 0) return { prices: {}, providers: {} };
   const header = lines.shift()!; // remove header
   // Accept header validation lightly (avoid strict coupling)
   const result: PriceTable = {};
+  const providers: Record<string, string> = {};
+  const winningUsd: Record<string, number> = {};
   for (const line of lines) {
     const parts = line.split(',');
     if (parts.length < 4) continue;
     const tld = parts[0]?.trim().toLowerCase();
-    // const provider = parts[1]?.trim().toLowerCase(); // not currently used
+    const provider = parts[1]?.trim().toLowerCase();
     const currency = parts[2]?.trim().toUpperCase();
     const amountStr = parts[3]?.trim();
     const amount = Number(amountStr);
@@ -180,11 +188,21 @@ function parseUnifiedPricesCsv(csv: string): PriceTable {
     const previous = map[currency];
     map[currency] = previous === undefined ? amount : Math.min(previous, amount);
     result[tld] = map;
+
+    if (currency === 'USD' && provider) {
+      const currentWinner = winningUsd[tld];
+      if (currentWinner === undefined || amount < currentWinner) {
+        winningUsd[tld] = amount;
+        providers[tld] = provider;
+      }
+    }
   }
-  return result;
+  return { prices: result, providers };
 }
 
-async function loadRemoteData(): Promise<[PriceTable, PriceTable, PriceTable, ExchangeRateData[]]> {
+async function loadRemoteData(): Promise<
+  [ParsedUnifiedPrices, ParsedUnifiedPrices, ParsedUnifiedPrices, ExchangeRateData[]]
+> {
   try {
     const [createPrices, renewPrices, transferPrices, rates] = await Promise.all([
       fetchText(UNIFIED_CREATE_PRICES_CSV).then(parseUnifiedPricesCsv),
@@ -204,10 +222,18 @@ async function loadRemoteData(): Promise<[PriceTable, PriceTable, PriceTable, Ex
 }
 
 // Fetch remote datasets once at module load (Node ESM supports top-level await)
-const [CREATE_PRICES, RENEW_PRICES, TRANSFER_PRICES, EXCHANGE_RATES] = await loadRemoteData();
+const [CREATE_PRICES_PARSED, RENEW_PRICES_PARSED, TRANSFER_PRICES_PARSED, EXCHANGE_RATES] = await loadRemoteData();
+const CREATE_PRICES = CREATE_PRICES_PARSED.prices;
+const RENEW_PRICES = RENEW_PRICES_PARSED.prices;
+const TRANSFER_PRICES = TRANSFER_PRICES_PARSED.prices;
+const CREATE_PROVIDERS = CREATE_PRICES_PARSED.providers;
 
 function loadPrices(): PriceTable {
   return CREATE_PRICES;
+}
+
+function loadCreateProviders(): Record<string, string> {
+  return CREATE_PROVIDERS;
 }
 
 function loadRenewPrices(): PriceTable {
@@ -410,7 +436,17 @@ export class DomainQuotes {
     const tax = roundAmount(subtotal * taxRate, allowFractional);
     const totalPrice = roundAmount(subtotal + tax, allowFractional);
 
-    return { extension: ext, currency, basePrice, discount, tax, totalPrice, symbol, domainTransaction: tx };
+    return {
+      extension: ext,
+      currency,
+      basePrice,
+      discount,
+      tax,
+      totalPrice,
+      symbol,
+      domainTransaction: tx,
+      provider: this.config.createProviders?.[ext],
+    };
   }
 }
 
@@ -419,6 +455,7 @@ export const DEFAULT_CONFIG: DomainQuoteConfig = {
   createPrices: loadPrices(),
   renewPrices: loadRenewPrices(),
   transferPrices: loadTransferPrices(),
+  createProviders: loadCreateProviders(),
   exchangeRates: loadExchangeRates(),
   vatRate: DEFAULT_VAT_RATE,
   discounts: {},

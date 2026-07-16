@@ -321,6 +321,45 @@ test('allowFractionalAmounts=false rounds amounts to nearest integer', async () 
   assert.equal(Number.isInteger(quote.totalPrice), true);
 });
 
+test('getQuote surfaces the provider owning the cheapest USD create price', async () => {
+  const config = {
+    createPrices: {
+      com: { USD: 8 },
+    },
+    createProviders: {
+      com: 'namecheap',
+    },
+    exchangeRates: [],
+    vatRate: 0,
+    discounts: {},
+    supportedCurrencies: ['USD'],
+  };
+  const dq = new DomainQuotes(config);
+  const quote = await dq.getQuote('com', 'USD');
+  assert.equal(quote.provider, 'namecheap');
+});
+
+test('getQuote leaves provider undefined when createProviders has no entry for the extension', async () => {
+  const config = {
+    createPrices: {
+      com: { USD: 8 },
+    },
+    exchangeRates: [],
+    vatRate: 0,
+    discounts: {},
+    supportedCurrencies: ['USD'],
+  };
+  const dq = new DomainQuotes(config);
+  const quote = await dq.getQuote('com', 'USD');
+  assert.equal(quote.provider, undefined);
+});
+
+test('DEFAULT_CONFIG surfaces provider for extensions from the unified price list', async () => {
+  const quote = await getDefaultQuote('com', 'USD');
+  assert.equal(typeof quote.provider, 'string');
+  assert.ok(quote.provider.length > 0);
+});
+
 test('allowFractionalAmounts defaults to false', async () => {
   const dp = new DomainQuotes({
     createPrices: { com: 10 },

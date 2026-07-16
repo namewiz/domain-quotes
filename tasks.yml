@@ -1,0 +1,54 @@
+tasks:
+  - id: 1
+    title: Add meta constraints to discount config API
+    ignoreTask: true
+    ignoreRationale: The API supports a callback that allows caller to implement any type of validation they want, making this unnecessary
+    description: |
+      Extend the DiscountConfig interface to support meta constraints that enable
+      more flexible discount targeting. Add support for:
+      - domainPattern: Discount a domain name regardless of extension
+      - emailDomain: Restrict discounts to users with specific email domains
+        (e.g., corporate discounts for @company.com)
+      - countryCode: Restrict discounts to users from specific country codes
+
+      These constraints should be evaluated in the discount eligibility logic
+      alongside existing extension and transaction type filters. Update the
+      DiscountEligibilityContext to include the necessary user/request metadata.
+    files:
+      - src/types.ts (DiscountConfig interface, DiscountEligibilityContext)
+      - src/index.ts (discount filtering logic, lines 320-356)
+      - tests/discount.test.js (add test cases for new constraints)
+    estimate: 4 hours
+
+  - id: 2
+    title: Replace custom DomainQuoteError with native errors
+    description: |
+      Simplify error handling by removing the custom DomainQuoteError hierarchy
+      (DomainQuoteError, UnsupportedExtensionError, UnsupportedCurrencyError) and
+      replacing them with native JavaScript Error objects. Use descriptive error
+      messages that include the error context. This reduces complexity and aligns
+      with standard JavaScript error patterns.
+
+      Current custom errors are thrown at:
+      - UnsupportedExtensionError: lines 260, 286, 306
+      - UnsupportedCurrencyError: lines 242, 292
+    files:
+      - src/index.ts (error class definitions lines 180-201, throw statements)
+      - tests/basic.test.js (error instantiation tests lines 241-253)
+    estimate: 2 hours
+
+  - id: 3
+    title: Enforce strictly positive total charge
+    description: |
+      Add validation to ensure the total charge (totalPrice) is always strictly
+      greater than zero. If the calculated total is zero or negative (e.g., due
+      to excessive discounts), return an appropriate error instead of a quote.
+
+      This validation should occur after all calculations (basePrice, discount,
+      tax) in the getQuote function around line 361 where totalPrice is computed.
+      Consider the edge case where discount equals or exceeds basePrice.
+    files:
+      - src/index.ts (getQuote function, totalPrice calculation around line 361)
+      - tests/basic.test.js (add edge case tests)
+      - tests/discount.test.js (add tests for discount exceeding basePrice)
+    estimate: 1 hour

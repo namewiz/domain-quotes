@@ -7,6 +7,8 @@ export interface Quote {
   totalPrice: number;
   symbol: string;
   domainTransaction: TransactionType;
+  /** The registrar that owns the quoted (cheapest) create price for this extension, e.g. 'openprovider' | 'namecheap' | 'nira'. */
+  provider?: string;
 }
 
 export type MarkupType = 'percentage' | 'fixedUsd';
@@ -74,6 +76,8 @@ export interface DomainQuoteConfig {
   renewPrices?: PriceTable;
   restorePrices?: PriceTable;
   transferPrices?: PriceTable;
+  // Maps extension -> the provider that owns the winning (cheapest) create price, as surfaced by the unified price CSV.
+  createProviders?: Record<string, string>;
   exchangeRates: ExchangeRateData[];
   // Single VAT rate applied across all countries/currencies.
   vatRate: number;
